@@ -54,6 +54,7 @@ Partial Class MainForm
         '
         Me._zipPasswordTextBox.Location = New System.Drawing.Point(231, 516)
         Me._zipPasswordTextBox.Name = "_zipPasswordTextBox"
+        Me._zipPasswordTextBox.PasswordChar = Global.Microsoft.VisualBasic.ChrW(9632)
         Me._zipPasswordTextBox.Size = New System.Drawing.Size(139, 20)
         Me._zipPasswordTextBox.TabIndex = 6
         '
@@ -62,9 +63,9 @@ Partial Class MainForm
         Me._zipPasswordLabel.AutoSize = True
         Me._zipPasswordLabel.Location = New System.Drawing.Point(228, 500)
         Me._zipPasswordLabel.Name = "_zipPasswordLabel"
-        Me._zipPasswordLabel.Size = New System.Drawing.Size(144, 13)
+        Me._zipPasswordLabel.Size = New System.Drawing.Size(104, 13)
         Me._zipPasswordLabel.TabIndex = 3
-        Me._zipPasswordLabel.Text = "Password (ZipCrypto / 96 bit)"
+        Me._zipPasswordLabel.Text = "Password (AES-256)"
         '
         '_saveZipButton
         '
@@ -190,6 +191,7 @@ Partial Class MainForm
         Me.Controls.Add(Me._zipPasswordLabel)
         Me.Controls.Add(Me._zipPasswordTextBox)
         Me.Controls.Add(Me._loadFromZipButton)
+        Me.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle
         Me.MaximizeBox = False
         Me.Name = "MainForm"
         Me.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen

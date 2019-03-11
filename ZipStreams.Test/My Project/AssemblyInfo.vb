@@ -9,10 +9,10 @@ Imports System.Runtime.InteropServices
 ' Review the values of the assembly attributes
 
 <Assembly: AssemblyTitle("ZipStreams.Test")>
-<Assembly: AssemblyDescription("Zip access via streams")>
+<Assembly: AssemblyDescription("ZipStreams")>
 <Assembly: AssemblyCompany("Artem Drobanov (DrAF)")>
 <Assembly: AssemblyProduct("ZipStreams.Test")>
-<Assembly: AssemblyCopyright("Copyright © DrAF 2017")>
+<Assembly: AssemblyCopyright("Copyright © DrAF 2017-2019")>
 <Assembly: AssemblyTrademark("ZipStreams")>
 
 <Assembly: ComVisible(False)>

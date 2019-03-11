@@ -15,7 +15,7 @@ Public Class MainForm
     Private _sfd As SaveFileDialog
 
     Private Sub _loadFromZipButton_Click(sender As Object, e As EventArgs) Handles _loadFromZipButton.Click
-        _ofd = New OpenFileDialog
+        _ofd = New OpenFileDialog()
         With _ofd
             .RestoreDirectory = True
             .AddExtension = True
@@ -28,7 +28,7 @@ Public Class MainForm
     End Sub
 
     Private Sub _loadFromFileButton_Click(sender As Object, e As EventArgs) Handles _loadFromFileButton.Click
-        _ofd = New OpenFileDialog
+        _ofd = New OpenFileDialog()
         With _ofd
             .RestoreDirectory = True
             .AddExtension = True
@@ -41,14 +41,14 @@ Public Class MainForm
     End Sub
 
     Private Sub _loadFromFolderButton_Click(sender As Object, e As EventArgs) Handles _loadFromFolderButton.Click
-        _fbd = New FolderBrowserDialog
+        _fbd = New FolderBrowserDialog()
         If _fbd.ShowDialog() = DialogResult.OK Then
             _loadFromFolderButton.Enabled = False : _loadFromFolderBW.RunWorkerAsync()
         End If
     End Sub
 
     Private Sub _saveZipButton_Click(sender As Object, e As EventArgs) Handles _saveZipButton.Click
-        _sfd = New SaveFileDialog
+        _sfd = New SaveFileDialog()
         With _sfd
             .RestoreDirectory = True
             .AddExtension = True
@@ -81,7 +81,7 @@ Public Class MainForm
             End Try
             Me.Invoke(Sub()
                           _zipEntriesListBox.Items.Clear()
-                          For Each zipEntryName In _zipStreams.ZipEntries
+                          For Each zipEntryName In _zipStreams.Names
                               _zipEntriesListBox.Items.Add(zipEntryName)
                           Next
                       End Sub)
@@ -105,7 +105,7 @@ Public Class MainForm
             End Try
             Me.Invoke(Sub()
                           _zipEntriesListBox.Items.Clear()
-                          For Each zipEntryName In _zipStreams.ZipEntries
+                          For Each zipEntryName In _zipStreams.Names
                               _zipEntriesListBox.Items.Add(zipEntryName)
                           Next
                       End Sub)
@@ -129,7 +129,7 @@ Public Class MainForm
             End Try
             Me.Invoke(Sub()
                           _zipEntriesListBox.Items.Clear()
-                          For Each zipEntryName In _zipStreams.ZipEntries
+                          For Each zipEntryName In _zipStreams.Names
                               _zipEntriesListBox.Items.Add(zipEntryName)
                           Next
                       End Sub)
@@ -176,17 +176,12 @@ Public Class MainForm
         Dim zipEntriesListBoxSelectedIndex = _zipEntriesListBox.SelectedIndex
         If zipEntriesListBoxSelectedIndex >= 0 Then
             Dim selectedItem = CType(_zipEntriesListBox.Items(zipEntriesListBoxSelectedIndex), String)
-            If _zipStreams.Streams.ContainsKey(selectedItem) Then
-                _zipStreams.Streams.Remove(selectedItem)
-                _zipEntriesListBox.Items.RemoveAt(zipEntriesListBoxSelectedIndex)
-            Else
-                MessageBox.Show("Can't find selected item in streams")
-            End If
+            _zipStreams.WipeAndRemoveStream(selectedItem)
         End If
     End Sub
 
     Private Sub _clearAllButton_Click(sender As Object, e As EventArgs) Handles _clearAllButton.Click
-        _zipStreams.Streams.Clear()
+        _zipStreams.WipeAndRemoveAllStreams()
         _zipEntriesListBox.Items.Clear()
     End Sub
 End Class

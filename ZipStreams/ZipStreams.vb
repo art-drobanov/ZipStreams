@@ -34,7 +34,6 @@ Public Class ZipStreams
                     _streamsWrittenInfo.Add(name, New CopyCounter)
                 End If
                 _streamsWrittenInfo(name).Value = writtenTotal
-
                 If Progress > 100 Then
                     Throw New Exception("ZipStreams: Progress > 100")
                 End If
@@ -43,7 +42,7 @@ Public Class ZipStreams
     End Class
 
     Private Const _bufferSize = 4096
-    Private Const _AESKeySize = 0 'ZipCrypto
+    Private Const _AESKeySize = 256 'AES-256
     Private Const _minCompressionLevel = 0
     Private Const _maxCompressionLevel = 9
     Private Const _progressUpdateMs = 100
@@ -56,26 +55,22 @@ Public Class ZipStreams
     Public Delegate Sub ProgressUpdatedDelegate(progress As Single)
     Public Event ProgressUpdated As ProgressUpdatedDelegate
 
-    Public ReadOnly Property Streams As Dictionary(Of String, MemoryStream)
-        Get
-            SyncLock _syncRoot
-                Return _streams
-            End SyncLock
-        End Get
-    End Property
-
-    Public ReadOnly Property ZipEntries As HashSet(Of String)
-        Get
-            SyncLock _syncRoot
-                Return New HashSet(Of String)(_streams.Keys)
-            End SyncLock
-        End Get
-    End Property
-
-    Public ReadOnly Property ZipEntriesList As List(Of String)
+    Public ReadOnly Property Names As List(Of String)
         Get
             SyncLock _syncRoot
                 Return _streams.Keys.ToList()
+            End SyncLock
+        End Get
+    End Property
+
+    Public ReadOnly Property Stream(name As String)
+        Get
+            SyncLock _syncRoot
+                If _streams.ContainsKey(name) Then
+                    Return _streams(name)
+                Else
+                    Return Nothing
+                End If
             End SyncLock
         End Get
     End Property
@@ -91,11 +86,27 @@ Public Class ZipStreams
         Me.New(CompressionMethod.Deflated)
     End Sub
 
-    Public Sub Clear()
+    Public Sub WipeAndRemoveAllStreams()
         SyncLock _syncRoot
+            For Each s In _streams.Values
+                WipeMemoryStream(s)
+            Next
             _streams.Clear()
         End SyncLock
     End Sub
+
+    Public Function WipeAndRemoveStream(name As String) As Boolean
+        SyncLock _syncRoot
+            Dim res = False
+            If _streams.ContainsKey(name) Then
+                Dim ms = _streams(name)
+                WipeMemoryStream(ms)
+                _streams.Remove(name)
+                res = True
+            End If
+            Return res
+        End SyncLock
+    End Function
 
     Public Function TryToAdd(entryName As String, stream As MemoryStream, name As String) As Boolean
         SyncLock _syncRoot
@@ -111,7 +122,7 @@ Public Class ZipStreams
 
     Public Sub LoadFromFile(fileName As String)
         Dim folderName = Path.GetDirectoryName(fileName)
-        Dim folderOffset As Integer = folderName.Length + (If(folderName.EndsWith("\"), 0, 1))
+        Dim folderOffset As Integer = folderName.Length + (If(folderName.EndsWith(Path.DirectorySeparatorChar), 0, 1))
         LoadFromFile(fileName, folderOffset)
     End Sub
 
@@ -133,7 +144,7 @@ Public Class ZipStreams
     End Sub
 
     Public Sub LoadFromFolder(folderName As String)
-        Dim folderOffset As Integer = folderName.Length + (If(folderName.EndsWith("\"), 0, 1))
+        Dim folderOffset As Integer = folderName.Length + (If(folderName.EndsWith(Path.DirectorySeparatorChar), 0, 1))
         LoadFromFolder(folderName, folderOffset)
     End Sub
 
@@ -158,7 +169,7 @@ Public Class ZipStreams
     Public Sub LoadFromStream(stream As Stream, zipPassword As String,
                               name As String, Optional seekBegin As Boolean = True)
         SyncLock _syncRoot
-            zipPassword = CheckString(zipPassword)
+            zipPassword = FilterEmptyString(zipPassword)
             If seekBegin Then
                 stream.Seek(0, SeekOrigin.Begin)
             End If
@@ -211,13 +222,14 @@ Public Class ZipStreams
         SyncLock _syncRoot
             level = If(level < _minCompressionLevel, _minCompressionLevel, level)
             level = If(level > _maxCompressionLevel, _maxCompressionLevel, level)
-            comment = CheckString(comment)
-            zipPassword = CheckString(zipPassword)
+            comment = FilterEmptyString(comment)
+            zipPassword = FilterEmptyString(zipPassword)
             Dim streamsTotalLength = _streams.Sum(Function(item) If(item.Value IsNot Nothing, item.Value.Length, 0))
             _copyTask = New CopyTask(streamsTotalLength)
-            Using outputZipStream As New ZipOutputStream(stream) With {.UseZip64 = False}
-                Dim now As Date = DateTime.Now
+            Using outputZipStream As New ZipOutputStream(stream)
+                Dim nowTime As Date = DateTime.Now
                 With outputZipStream
+                    .UseZip64 = False
                     .SetLevel(level)
                     If comment IsNot Nothing Then
                         .SetComment(comment)
@@ -227,13 +239,17 @@ Public Class ZipStreams
                     End If
                 End With
                 For Each streamKVP In _streams
-                    Dim zipEntry = New ZipEntry(streamKVP.Key) With {.DateTime = now, .Size = streamKVP.Value.Length}
+                    Dim zipEntry = New ZipEntry(streamKVP.Key) With
+                        {
+                            .DateTime = nowTime,
+                            .Size = streamKVP.Value.Length,
+                            .IsUnicodeText = True
+                        }
                     If zipEntry.IsDirectory Then
                         With zipEntry
                             .CompressionMethod = CompressionMethod.Stored
                             .AESKeySize = 0
                             .CompressedSize = .Size
-                            .IsUnicodeText = True
                         End With
                     End If
                     If zipEntry.IsFile Then
@@ -244,7 +260,7 @@ Public Class ZipStreams
                             End With
                         Else
                             With zipEntry
-                                .AESKeySize = _AESKeySize
+                                .AESKeySize = If(zipPassword IsNot Nothing, _AESKeySize, 0)
                                 .CompressionMethod = _compressionMethod
                             End With
                         End If
@@ -257,6 +273,7 @@ Public Class ZipStreams
                 Next
                 With outputZipStream
                     .IsStreamOwner = False
+                    .Flush()
                     .Close()
                 End With
                 RaiseEvent ProgressUpdated(1)
@@ -265,7 +282,7 @@ Public Class ZipStreams
         End SyncLock
     End Sub
 
-    Private Function CheckString(str As String) As String
+    Private Function FilterEmptyString(str As String) As String
         If String.IsNullOrEmpty(str) Then
             Return Nothing
         Else
@@ -299,6 +316,11 @@ Public Class ZipStreams
         Else
             Throw New Exception("ZipStreams: Can't do seek in source stream (StreamCopy)!")
         End If
+    End Sub
+
+    Private Sub WipeMemoryStream(ms As MemoryStream)
+        Dim arr = ms.GetBuffer()
+        Array.Clear(arr, 0, arr.Length)
     End Sub
 
     Private Sub ProgressUpdatedHandler(sender As Object, e As ProgressEventArgs)
