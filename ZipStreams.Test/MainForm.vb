@@ -75,7 +75,7 @@ Public Class MainForm
                           zipPassword = _zipPasswordTextBox.Text
                       End Sub)
             Try
-                _zipStreams.LoadFromZip(zipFileName, zipPassword)
+                _zipStreams.LoadFromZip(zipFileName, zipPassword, _appendCheckBox.Checked)
             Catch ex As Exception
                 MessageBox.Show(ex.Message)
             End Try
