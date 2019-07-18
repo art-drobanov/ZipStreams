@@ -1,9 +1,9 @@
-﻿<Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()> _
+﻿<Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()>
 Partial Class MainForm
     Inherits System.Windows.Forms.Form
 
     'Form overrides dispose to clean up the component list.
-    <System.Diagnostics.DebuggerNonUserCode()> _
+    <System.Diagnostics.DebuggerNonUserCode()>
     Protected Overrides Sub Dispose(ByVal disposing As Boolean)
         Try
             If disposing AndAlso components IsNot Nothing Then
@@ -20,7 +20,7 @@ Partial Class MainForm
     'NOTE: The following procedure is required by the Windows Form Designer
     'It can be modified using the Windows Form Designer.  
     'Do not modify it using the code editor.
-    <System.Diagnostics.DebuggerStepThrough()> _
+    <System.Diagnostics.DebuggerStepThrough()>
     Private Sub InitializeComponent()
         Me._loadFromZipButton = New System.Windows.Forms.Button()
         Me._zipPasswordTextBox = New System.Windows.Forms.TextBox()
@@ -37,6 +37,7 @@ Partial Class MainForm
         Me._removeSelectedStreamButton = New System.Windows.Forms.Button()
         Me._clearAllButton = New System.Windows.Forms.Button()
         Me._zipEntriesListBox = New System.Windows.Forms.ListBox()
+        Me._unicodeCheckBox = New System.Windows.Forms.CheckBox()
         CType(Me._logoPictureBox, System.ComponentModel.ISupportInitialize).BeginInit()
         CType(Me._compressionLevelTrackBar, System.ComponentModel.ISupportInitialize).BeginInit()
         Me.SuspendLayout()
@@ -45,7 +46,7 @@ Partial Class MainForm
         '
         Me._loadFromZipButton.Location = New System.Drawing.Point(12, 500)
         Me._loadFromZipButton.Name = "_loadFromZipButton"
-        Me._loadFromZipButton.Size = New System.Drawing.Size(69, 60)
+        Me._loadFromZipButton.Size = New System.Drawing.Size(69, 58)
         Me._loadFromZipButton.TabIndex = 2
         Me._loadFromZipButton.Text = "Load From ZIP"
         Me._loadFromZipButton.UseVisualStyleBackColor = True
@@ -64,15 +65,15 @@ Partial Class MainForm
         Me._zipPasswordLabel.Location = New System.Drawing.Point(228, 500)
         Me._zipPasswordLabel.Name = "_zipPasswordLabel"
         Me._zipPasswordLabel.Size = New System.Drawing.Size(104, 13)
-        Me._zipPasswordLabel.TabIndex = 3
+        Me._zipPasswordLabel.TabIndex = 0
         Me._zipPasswordLabel.Text = "Password (AES-256)"
         '
         '_saveZipButton
         '
         Me._saveZipButton.Location = New System.Drawing.Point(378, 500)
         Me._saveZipButton.Name = "_saveZipButton"
-        Me._saveZipButton.Size = New System.Drawing.Size(69, 102)
-        Me._saveZipButton.TabIndex = 10
+        Me._saveZipButton.Size = New System.Drawing.Size(69, 88)
+        Me._saveZipButton.TabIndex = 8
         Me._saveZipButton.Text = "Save ZIP"
         Me._saveZipButton.UseVisualStyleBackColor = True
         '
@@ -109,7 +110,7 @@ Partial Class MainForm
         Me._progressBar.Location = New System.Drawing.Point(12, 650)
         Me._progressBar.Name = "_progressBar"
         Me._progressBar.Size = New System.Drawing.Size(435, 23)
-        Me._progressBar.TabIndex = 8
+        Me._progressBar.TabIndex = 0
         '
         '_commentLabel
         '
@@ -117,7 +118,7 @@ Partial Class MainForm
         Me._commentLabel.Location = New System.Drawing.Point(87, 500)
         Me._commentLabel.Name = "_commentLabel"
         Me._commentLabel.Size = New System.Drawing.Size(51, 13)
-        Me._commentLabel.TabIndex = 9
+        Me._commentLabel.TabIndex = 0
         Me._commentLabel.Text = "Comment"
         '
         '_commentTextBox
@@ -142,7 +143,7 @@ Partial Class MainForm
         Me._compressionLabel.Location = New System.Drawing.Point(228, 545)
         Me._compressionLabel.Name = "_compressionLabel"
         Me._compressionLabel.Size = New System.Drawing.Size(108, 13)
-        Me._compressionLabel.TabIndex = 12
+        Me._compressionLabel.TabIndex = 0
         Me._compressionLabel.Text = "Compression Level: 9"
         '
         '_removeSelectedStreamButton
@@ -150,7 +151,7 @@ Partial Class MainForm
         Me._removeSelectedStreamButton.Location = New System.Drawing.Point(231, 621)
         Me._removeSelectedStreamButton.Name = "_removeSelectedStreamButton"
         Me._removeSelectedStreamButton.Size = New System.Drawing.Size(139, 23)
-        Me._removeSelectedStreamButton.TabIndex = 8
+        Me._removeSelectedStreamButton.TabIndex = 10
         Me._removeSelectedStreamButton.Text = "Remove Stream"
         Me._removeSelectedStreamButton.UseVisualStyleBackColor = True
         '
@@ -159,7 +160,7 @@ Partial Class MainForm
         Me._clearAllButton.Location = New System.Drawing.Point(378, 621)
         Me._clearAllButton.Name = "_clearAllButton"
         Me._clearAllButton.Size = New System.Drawing.Size(69, 23)
-        Me._clearAllButton.TabIndex = 9
+        Me._clearAllButton.TabIndex = 11
         Me._clearAllButton.Text = "Clear All"
         Me._clearAllButton.UseVisualStyleBackColor = True
         '
@@ -171,11 +172,24 @@ Partial Class MainForm
         Me._zipEntriesListBox.Size = New System.Drawing.Size(435, 472)
         Me._zipEntriesListBox.TabIndex = 1
         '
+        '_unicodeCheckBox
+        '
+        Me._unicodeCheckBox.AutoSize = True
+        Me._unicodeCheckBox.Checked = True
+        Me._unicodeCheckBox.CheckState = System.Windows.Forms.CheckState.Checked
+        Me._unicodeCheckBox.Location = New System.Drawing.Point(378, 594)
+        Me._unicodeCheckBox.Name = "_unicodeCheckBox"
+        Me._unicodeCheckBox.Size = New System.Drawing.Size(66, 17)
+        Me._unicodeCheckBox.TabIndex = 9
+        Me._unicodeCheckBox.Text = "Unicode"
+        Me._unicodeCheckBox.UseVisualStyleBackColor = True
+        '
         'MainForm
         '
         Me.AutoScaleDimensions = New System.Drawing.SizeF(6.0!, 13.0!)
         Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
         Me.ClientSize = New System.Drawing.Size(459, 684)
+        Me.Controls.Add(Me._unicodeCheckBox)
         Me.Controls.Add(Me._zipEntriesListBox)
         Me.Controls.Add(Me._clearAllButton)
         Me.Controls.Add(Me._removeSelectedStreamButton)
@@ -218,4 +232,5 @@ Partial Class MainForm
     Friend WithEvents _removeSelectedStreamButton As Button
     Friend WithEvents _clearAllButton As Button
     Friend WithEvents _zipEntriesListBox As ListBox
+    Friend WithEvents _unicodeCheckBox As CheckBox
 End Class

@@ -46,10 +46,6 @@
     <OptionInfer>On</OptionInfer>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="ICSharpCode.SharpZipLib, Version=0.86.0.518, Culture=neutral, PublicKeyToken=1b03e6acf1164f73, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\refs\ICSharpCode.SharpZipLib.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Data" />
     <Reference Include="System.Deployment" />
@@ -122,6 +118,10 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\ICSharpCode.SharpZipLib\ICSharpCode.SharpZipLib.csproj">
+      <Project>{236d4ac1-a4a4-440e-8b15-bea3feb43da7}</Project>
+      <Name>ICSharpCode.SharpZipLib</Name>
+    </ProjectReference>
     <ProjectReference Include="..\ZipStreams\ZipStreams.vbproj">
       <Project>{9c5d10e7-bab3-4a6f-98c9-05f41269bc59}</Project>
       <Name>ZipStreams</Name>

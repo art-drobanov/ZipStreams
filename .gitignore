@@ -1,6 +1,6 @@
-release
 debug
 output
 obj
 bin
 *.suo
+!/release/**

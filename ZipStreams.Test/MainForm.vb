@@ -1,6 +1,4 @@
 ﻿Imports System.ComponentModel
-Imports ICSharpCode.SharpZipLib
-Imports ICSharpCode.SharpZipLib.Zip
 
 Public Class MainForm
     Private WithEvents _zipStreams As New ZipStreams()
@@ -128,10 +126,7 @@ Public Class MainForm
                 MessageBox.Show(ex.Message)
             End Try
             Me.Invoke(Sub()
-                          _zipEntriesListBox.Items.Clear()
-                          For Each zipEntryName In _zipStreams.Names
-                              _zipEntriesListBox.Items.Add(zipEntryName)
-                          Next
+                          RefreshListBox()
                       End Sub)
         Catch ex As Exception
             MessageBox.Show(ex.Message)
@@ -156,7 +151,7 @@ Public Class MainForm
                           comment = _commentTextBox.Text
                           zipPassword = _zipPasswordTextBox.Text
                       End Sub)
-            _zipStreams.Save(zipFileName, compressionLevel, comment, zipPassword)
+            _zipStreams.SaveToZipFile(zipFileName, compressionLevel, comment, zipPassword, Now, _unicodeCheckBox.Checked)
         Catch ex As Exception
             MessageBox.Show(ex.Message)
         End Try
@@ -177,11 +172,19 @@ Public Class MainForm
         If zipEntriesListBoxSelectedIndex >= 0 Then
             Dim selectedItem = CType(_zipEntriesListBox.Items(zipEntriesListBoxSelectedIndex), String)
             _zipStreams.WipeAndRemoveStream(selectedItem)
+            RefreshListBox()
         End If
     End Sub
 
     Private Sub _clearAllButton_Click(sender As Object, e As EventArgs) Handles _clearAllButton.Click
         _zipStreams.WipeAndRemoveAllStreams()
         _zipEntriesListBox.Items.Clear()
+    End Sub
+
+    Private Sub RefreshListBox()
+        _zipEntriesListBox.Items.Clear()
+        For Each zipEntryName In _zipStreams.Names
+            _zipEntriesListBox.Items.Add(zipEntryName)
+        Next
     End Sub
 End Class
