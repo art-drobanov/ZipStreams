@@ -113,6 +113,19 @@
             <param name="message">A <see cref="T:System.String"/> that describes the error.</param>
             <param name="innerException">The <see cref="T:System.Exception"/> that caused this exception.</param>
         </member>
+        <member name="M:ICSharpCode.SharpZipLib.BZip2.BZip2Exception.#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)">
+            <summary>
+            Initializes a new instance of the BZip2Exception class with serialized data.
+            </summary>
+            <param name="info">
+            The System.Runtime.Serialization.SerializationInfo that holds the serialized
+            object data about the exception being thrown.
+            </param>
+            <param name="context">
+            The System.Runtime.Serialization.StreamingContext that contains contextual information
+            about the source or destination.
+            </param>
+        </member>
         <member name="T:ICSharpCode.SharpZipLib.BZip2.BZip2InputStream">
             <summary>
             An input stream that decompresses files in the BZip2 format
@@ -663,6 +676,19 @@
             <param name="message">A message describing the exception.</param>
             <param name="innerException">The inner exception</param>
         </member>
+        <member name="M:ICSharpCode.SharpZipLib.SharpZipBaseException.#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)">
+            <summary>
+            Initializes a new instance of the SharpZipBaseException class with serialized data.
+            </summary>
+            <param name="info">
+            The System.Runtime.Serialization.SerializationInfo that holds the serialized
+            object data about the exception being thrown.
+            </param>
+            <param name="context">
+            The System.Runtime.Serialization.StreamingContext that contains contextual information
+            about the source or destination.
+            </param>
+        </member>
         <member name="T:ICSharpCode.SharpZipLib.StreamDecodingException">
             <summary>
             Indicates that an error occured during decoding of a input stream due to corrupt
@@ -688,6 +714,19 @@
             <param name="message">A message describing the exception.</param>
             <param name="innerException">The inner exception</param>
         </member>
+        <member name="M:ICSharpCode.SharpZipLib.StreamDecodingException.#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)">
+            <summary>
+            Initializes a new instance of the StreamDecodingException class with serialized data.
+            </summary>
+            <param name="info">
+            The System.Runtime.Serialization.SerializationInfo that holds the serialized
+            object data about the exception being thrown.
+            </param>
+            <param name="context">
+            The System.Runtime.Serialization.StreamingContext that contains contextual information
+            about the source or destination.
+            </param>
+        </member>
         <member name="T:ICSharpCode.SharpZipLib.StreamUnsupportedException">
             <summary>
             Indicates that the input stream could not decoded due to known library incompability or missing features
@@ -712,6 +751,19 @@
             <param name="message">A message describing the exception.</param>
             <param name="innerException">The inner exception</param>
         </member>
+        <member name="M:ICSharpCode.SharpZipLib.StreamUnsupportedException.#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)">
+            <summary>
+            Initializes a new instance of the StreamUnsupportedException class with serialized data.
+            </summary>
+            <param name="info">
+            The System.Runtime.Serialization.SerializationInfo that holds the serialized
+            object data about the exception being thrown.
+            </param>
+            <param name="context">
+            The System.Runtime.Serialization.StreamingContext that contains contextual information
+            about the source or destination.
+            </param>
+        </member>
         <member name="T:ICSharpCode.SharpZipLib.UnexpectedEndOfStreamException">
             <summary>
             Indicates that the input stream could not decoded due to the stream ending before enough data had been provided
@@ -735,6 +787,19 @@
             </summary>
             <param name="message">A message describing the exception.</param>
             <param name="innerException">The inner exception</param>
+        </member>
+        <member name="M:ICSharpCode.SharpZipLib.UnexpectedEndOfStreamException.#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)">
+            <summary>
+            Initializes a new instance of the UnexpectedEndOfStreamException class with serialized data.
+            </summary>
+            <param name="info">
+            The System.Runtime.Serialization.SerializationInfo that holds the serialized
+            object data about the exception being thrown.
+            </param>
+            <param name="context">
+            The System.Runtime.Serialization.StreamingContext that contains contextual information
+            about the source or destination.
+            </param>
         </member>
         <member name="T:ICSharpCode.SharpZipLib.ValueOutOfRangeException">
             <summary>
@@ -766,6 +831,19 @@
             <param name="value">The invalid value</param>
             <param name="maxValue">Expected maximum value</param>
             <param name="minValue">Expected minimum value</param>
+        </member>
+        <member name="M:ICSharpCode.SharpZipLib.ValueOutOfRangeException.#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)">
+            <summary>
+            Initializes a new instance of the ValueOutOfRangeException class with serialized data.
+            </summary>
+            <param name="info">
+            The System.Runtime.Serialization.SerializationInfo that holds the serialized
+            object data about the exception being thrown.
+            </param>
+            <param name="context">
+            The System.Runtime.Serialization.StreamingContext that contains contextual information
+            about the source or destination.
+            </param>
         </member>
         <member name="T:ICSharpCode.SharpZipLib.Core.ScanEventArgs">
             <summary>
@@ -1060,6 +1138,19 @@
             </summary>
             <param name="message">A message describing the exception.</param>
             <param name="innerException">The inner exception</param>
+        </member>
+        <member name="M:ICSharpCode.SharpZipLib.Core.InvalidNameException.#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)">
+            <summary>
+            Initializes a new instance of the InvalidNameException class with serialized data.
+            </summary>
+            <param name="info">
+            The System.Runtime.Serialization.SerializationInfo that holds the serialized
+            object data about the exception being thrown.
+            </param>
+            <param name="context">
+            The System.Runtime.Serialization.StreamingContext that contains contextual information
+            about the source or destination.
+            </param>
         </member>
         <member name="T:ICSharpCode.SharpZipLib.Core.IScanFilter">
             <summary>
@@ -1757,6 +1848,19 @@
             <param name="message">A <see cref="T:System.String"/> that describes the error.</param>
             <param name="innerException">The <see cref="T:System.Exception"/> that caused this exception.</param>
         </member>
+        <member name="M:ICSharpCode.SharpZipLib.GZip.GZipException.#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)">
+            <summary>
+            Initializes a new instance of the GZipException class with serialized data.
+            </summary>
+            <param name="info">
+            The System.Runtime.Serialization.SerializationInfo that holds the serialized
+            object data about the exception being thrown.
+            </param>
+            <param name="context">
+            The System.Runtime.Serialization.StreamingContext that contains contextual information
+            about the source or destination.
+            </param>
+        </member>
         <member name="T:ICSharpCode.SharpZipLib.GZip.GZipInputStream">
              <summary>
              This filter stream is used to decompress a "GZIP" format stream.
@@ -1995,6 +2099,19 @@
             </summary>
             <param name="message">A <see cref="T:System.String"/> that describes the error.</param>
             <param name="innerException">The <see cref="T:System.Exception"/> that caused this exception.</param>
+        </member>
+        <member name="M:ICSharpCode.SharpZipLib.Lzw.LzwException.#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)">
+            <summary>
+            Initializes a new instance of the LzwException class with serialized data.
+            </summary>
+            <param name="info">
+            The System.Runtime.Serialization.SerializationInfo that holds the serialized
+            object data about the exception being thrown.
+            </param>
+            <param name="context">
+            The System.Runtime.Serialization.StreamingContext that contains contextual information
+            about the source or destination.
+            </param>
         </member>
         <member name="T:ICSharpCode.SharpZipLib.Lzw.LzwInputStream">
              <summary>
@@ -2974,6 +3091,19 @@
             </summary>
             <param name="message">A <see cref="T:System.String"/> that describes the error.</param>
             <param name="innerException">The <see cref="T:System.Exception"/> that caused this exception.</param>
+        </member>
+        <member name="M:ICSharpCode.SharpZipLib.Tar.TarException.#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)">
+            <summary>
+            Initializes a new instance of the TarException class with serialized data.
+            </summary>
+            <param name="info">
+            The System.Runtime.Serialization.SerializationInfo that holds the serialized
+            object data about the exception being thrown.
+            </param>
+            <param name="context">
+            The System.Runtime.Serialization.StreamingContext that contains contextual information
+            about the source or destination.
+            </param>
         </member>
         <member name="T:ICSharpCode.SharpZipLib.Tar.TarExtendedHeaderReader">
             <summary>
@@ -7665,6 +7795,19 @@
             </summary>
             <param name="message">A <see cref="T:System.String"/> that describes the error.</param>
             <param name="innerException">The <see cref="T:System.Exception"/> that caused this exception.</param>
+        </member>
+        <member name="M:ICSharpCode.SharpZipLib.Zip.ZipException.#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)">
+            <summary>
+            Initializes a new instance of the ZipException class with serialized data.
+            </summary>
+            <param name="info">
+            The System.Runtime.Serialization.SerializationInfo that holds the serialized
+            object data about the exception being thrown.
+            </param>
+            <param name="context">
+            The System.Runtime.Serialization.StreamingContext that contains contextual information
+            about the source or destination.
+            </param>
         </member>
         <member name="T:ICSharpCode.SharpZipLib.Zip.ITaggedData">
             <summary>
