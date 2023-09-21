@@ -6,7 +6,7 @@ namespace ICSharpCode.SharpZipLib.Encryption
 {
 	/// <summary>
 	/// PkzipClassic embodies the classic or original encryption facilities used in Pkzip archives.
-	/// While it has been superceded by more recent and more powerful algorithms, its still in use and
+	/// While it has been superseded by more recent and more powerful algorithms, its still in use and
 	/// is viable for preventing casual snooping
 	/// </summary>
 	public abstract class PkzipClassic : SymmetricAlgorithm
@@ -444,8 +444,10 @@ namespace ICSharpCode.SharpZipLib.Encryption
 		public override void GenerateKey()
 		{
 			key_ = new byte[12];
-			var rnd = new Random();
-			rnd.NextBytes(key_);
+			using (var rng = RandomNumberGenerator.Create())
+			{
+				rng.GetBytes(key_);
+			}
 		}
 
 		/// <summary>

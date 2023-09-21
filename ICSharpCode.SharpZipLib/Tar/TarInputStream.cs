@@ -1,6 +1,10 @@
 using System;
+using System.Buffers;
 using System.IO;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using ICSharpCode.SharpZipLib.Core;
 
 namespace ICSharpCode.SharpZipLib.Tar
 {
@@ -18,8 +22,19 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// Construct a TarInputStream with default block factor
 		/// </summary>
 		/// <param name="inputStream">stream to source data from</param>
+		[Obsolete("No Encoding for Name field is specified, any non-ASCII bytes will be discarded")]
 		public TarInputStream(Stream inputStream)
-			: this(inputStream, TarBuffer.DefaultBlockFactor)
+			: this(inputStream, TarBuffer.DefaultBlockFactor, null)
+		{
+		}
+
+		/// <summary>
+		/// Construct a TarInputStream with default block factor
+		/// </summary>
+		/// <param name="inputStream">stream to source data from</param>
+		/// <param name="nameEncoding">The <see cref="Encoding"/> used for the Name fields, or null for ASCII only</param>
+		public TarInputStream(Stream inputStream, Encoding nameEncoding)
+			: this(inputStream, TarBuffer.DefaultBlockFactor, nameEncoding)
 		{
 		}
 
@@ -28,10 +43,25 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		/// <param name="inputStream">stream to source data from</param>
 		/// <param name="blockFactor">block factor to apply to archive</param>
+		[Obsolete("No Encoding for Name field is specified, any non-ASCII bytes will be discarded")]
 		public TarInputStream(Stream inputStream, int blockFactor)
 		{
 			this.inputStream = inputStream;
 			tarBuffer = TarBuffer.CreateInputTarBuffer(inputStream, blockFactor);
+			encoding = null;
+		}
+
+		/// <summary>
+		/// Construct a TarInputStream with user specified block factor
+		/// </summary>
+		/// <param name="inputStream">stream to source data from</param>
+		/// <param name="blockFactor">block factor to apply to archive</param>
+		/// <param name="nameEncoding">The <see cref="Encoding"/> used for the Name fields, or null for ASCII only</param>
+		public TarInputStream(Stream inputStream, int blockFactor, Encoding nameEncoding)
+		{
+			this.inputStream = inputStream;
+			tarBuffer = TarBuffer.CreateInputTarBuffer(inputStream, blockFactor);
+			encoding = nameEncoding;
 		}
 
 		#endregion Constructors
@@ -54,10 +84,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public override bool CanRead
 		{
-			get
-			{
-				return inputStream.CanRead;
-			}
+			get { return inputStream.CanRead; }
 		}
 
 		/// <summary>
@@ -66,10 +93,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public override bool CanSeek
 		{
-			get
-			{
-				return false;
-			}
+			get { return false; }
 		}
 
 		/// <summary>
@@ -78,10 +102,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public override bool CanWrite
 		{
-			get
-			{
-				return false;
-			}
+			get { return false; }
 		}
 
 		/// <summary>
@@ -89,10 +110,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public override long Length
 		{
-			get
-			{
-				return inputStream.Length;
-			}
+			get { return inputStream.Length; }
 		}
 
 		/// <summary>
@@ -102,14 +120,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <exception cref="NotSupportedException">Any attempt to set position</exception>
 		public override long Position
 		{
-			get
-			{
-				return inputStream.Position;
-			}
-			set
-			{
-				throw new NotSupportedException("TarInputStream Seek not supported");
-			}
+			get { return inputStream.Position; }
+			set { throw new NotSupportedException("TarInputStream Seek not supported"); }
 		}
 
 		/// <summary>
@@ -118,6 +130,15 @@ namespace ICSharpCode.SharpZipLib.Tar
 		public override void Flush()
 		{
 			inputStream.Flush();
+		}
+
+		/// <summary>
+		/// Flushes the baseInputStream
+		/// </summary>
+		/// <param name="cancellationToken"></param>
+		public override async Task FlushAsync(CancellationToken cancellationToken)
+		{
+			await inputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
 		}
 
 		/// <summary>
@@ -173,15 +194,64 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <returns>A byte cast to an int; -1 if the at the end of the stream.</returns>
 		public override int ReadByte()
 		{
-			byte[] oneByteBuffer = new byte[1];
-			int num = Read(oneByteBuffer, 0, 1);
+			var oneByteBuffer = ArrayPool<byte>.Shared.Rent(1);
+			var num = Read(oneByteBuffer, 0, 1);
 			if (num <= 0)
 			{
 				// return -1 to indicate that no byte was read.
 				return -1;
 			}
-			return oneByteBuffer[0];
+
+			var result = oneByteBuffer[0];
+			ArrayPool<byte>.Shared.Return(oneByteBuffer);
+			return result;
 		}
+
+
+		/// <summary>
+		/// Reads bytes from the current tar archive entry.
+		/// 
+		/// This method is aware of the boundaries of the current
+		/// entry in the archive and will deal with them appropriately
+		/// </summary>
+		/// <param name="buffer">
+		/// The buffer into which to place bytes read.
+		/// </param>
+		/// <param name="offset">
+		/// The offset at which to place bytes read.
+		/// </param>
+		/// <param name="count">
+		/// The number of bytes to read.
+		/// </param>
+		/// <param name="cancellationToken"></param>
+		/// <returns>
+		/// The number of bytes read, or 0 at end of stream/EOF.
+		/// </returns>
+		public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+		{
+			return ReadAsync(buffer.AsMemory().Slice(offset, count), cancellationToken, true).AsTask();
+		}
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
+		/// <summary>
+		/// Reads bytes from the current tar archive entry.
+		/// 
+		/// This method is aware of the boundaries of the current
+		/// entry in the archive and will deal with them appropriately
+		/// </summary>
+		/// <param name="buffer">
+		/// The buffer into which to place bytes read.
+		/// </param>
+		/// <param name="cancellationToken"></param>
+		/// <returns>
+		/// The number of bytes read, or 0 at end of stream/EOF.
+		/// </returns>
+		public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken =
+			new CancellationToken())
+		{
+			return ReadAsync(buffer, cancellationToken, true);
+		}
+#endif
 
 		/// <summary>
 		/// Reads bytes from the current tar archive entry.
@@ -208,6 +278,13 @@ namespace ICSharpCode.SharpZipLib.Tar
 				throw new ArgumentNullException(nameof(buffer));
 			}
 
+			return ReadAsync(buffer.AsMemory().Slice(offset, count), CancellationToken.None, false).GetAwaiter()
+				.GetResult();
+		}
+
+		private async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct, bool isAsync)
+		{
+			int offset = 0;
 			int totalRead = 0;
 
 			if (entryOffset >= entrySize)
@@ -215,7 +292,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 				return 0;
 			}
 
-			long numToRead = count;
+			long numToRead = buffer.Length;
 
 			if ((numToRead + entryOffset) > entrySize)
 			{
@@ -224,19 +301,22 @@ namespace ICSharpCode.SharpZipLib.Tar
 
 			if (readBuffer != null)
 			{
-				int sz = (numToRead > readBuffer.Length) ? readBuffer.Length : (int)numToRead;
+				int sz = (numToRead > readBuffer.Memory.Length) ? readBuffer.Memory.Length : (int)numToRead;
 
-				Array.Copy(readBuffer, 0, buffer, offset, sz);
+				readBuffer.Memory.Slice(0, sz).CopyTo(buffer.Slice(offset, sz));
 
-				if (sz >= readBuffer.Length)
+				if (sz >= readBuffer.Memory.Length)
 				{
+					readBuffer.Dispose();
 					readBuffer = null;
 				}
 				else
 				{
-					int newLen = readBuffer.Length - sz;
-					byte[] newBuf = new byte[newLen];
-					Array.Copy(readBuffer, sz, newBuf, 0, newLen);
+					int newLen = readBuffer.Memory.Length - sz;
+					var newBuf = ExactMemoryPool<byte>.Shared.Rent(newLen);
+					readBuffer.Memory.Slice(sz, newLen).CopyTo(newBuf.Memory);
+					readBuffer.Dispose();
+					
 					readBuffer = newBuf;
 				}
 
@@ -245,34 +325,35 @@ namespace ICSharpCode.SharpZipLib.Tar
 				offset += sz;
 			}
 
+			var recLen = TarBuffer.BlockSize;
+			var recBuf = ArrayPool<byte>.Shared.Rent(recLen);
+
 			while (numToRead > 0)
 			{
-				byte[] rec = tarBuffer.ReadBlock();
-				if (rec == null)
-				{
-					// Unexpected EOF!
-					throw new TarException("unexpected EOF with " + numToRead + " bytes unread");
-				}
+				await tarBuffer.ReadBlockIntAsync(recBuf, ct, isAsync).ConfigureAwait(false);
 
 				var sz = (int)numToRead;
-				int recLen = rec.Length;
 
 				if (recLen > sz)
 				{
-					Array.Copy(rec, 0, buffer, offset, sz);
-					readBuffer = new byte[recLen - sz];
-					Array.Copy(rec, sz, readBuffer, 0, recLen - sz);
+					recBuf.AsSpan().Slice(0, sz).CopyTo(buffer.Slice(offset, sz).Span);
+					readBuffer?.Dispose();
+
+					readBuffer = ExactMemoryPool<byte>.Shared.Rent(recLen - sz);
+					recBuf.AsSpan().Slice(sz, recLen - sz).CopyTo(readBuffer.Memory.Span);
 				}
 				else
 				{
 					sz = recLen;
-					Array.Copy(rec, 0, buffer, offset, recLen);
+					recBuf.AsSpan().CopyTo(buffer.Slice(offset, recLen).Span);
 				}
 
 				totalRead += sz;
 				numToRead -= sz;
 				offset += sz;
 			}
+
+			ArrayPool<byte>.Shared.Return(recBuf);
 
 			entryOffset += totalRead;
 
@@ -290,6 +371,17 @@ namespace ICSharpCode.SharpZipLib.Tar
 				tarBuffer.Close();
 			}
 		}
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
+		/// <summary>
+		/// Closes this stream. Calls the TarBuffer's close() method.
+		/// The underlying stream is closed by the TarBuffer.
+		/// </summary>
+		public override async ValueTask DisposeAsync()
+		{
+			await tarBuffer.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+		}
+#endif
 
 		#endregion Stream Overrides
 
@@ -334,10 +426,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </returns>
 		public long Available
 		{
-			get
-			{
-				return entrySize - entryOffset;
-			}
+			get { return entrySize - entryOffset; }
 		}
 
 		/// <summary>
@@ -349,25 +438,42 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <param name="skipCount">
 		/// The number of bytes to skip.
 		/// </param>
-		public void Skip(long skipCount)
+		/// <param name="ct"></param>
+		private Task SkipAsync(long skipCount, CancellationToken ct) => SkipAsync(skipCount, ct, true).AsTask();
+
+		/// <summary>
+		/// Skip bytes in the input buffer. This skips bytes in the
+		/// current entry's data, not the entire archive, and will
+		/// stop at the end of the current entry's data if the number
+		/// to skip extends beyond that point.
+		/// </summary>
+		/// <param name="skipCount">
+		/// The number of bytes to skip.
+		/// </param>
+		private void Skip(long skipCount) =>
+			SkipAsync(skipCount, CancellationToken.None, false).GetAwaiter().GetResult();
+
+		private async ValueTask SkipAsync(long skipCount, CancellationToken ct, bool isAsync)
 		{
 			// TODO: REVIEW efficiency of TarInputStream.Skip
 			// This is horribly inefficient, but it ensures that we
 			// properly skip over bytes via the TarBuffer...
 			//
-			byte[] skipBuf = new byte[8 * 1024];
-
-			for (long num = skipCount; num > 0;)
+			var length = 8 * 1024;
+			using (var skipBuf = ExactMemoryPool<byte>.Shared.Rent(length))
 			{
-				int toRead = num > skipBuf.Length ? skipBuf.Length : (int)num;
-				int numRead = Read(skipBuf, 0, toRead);
-
-				if (numRead == -1)
+				for (long num = skipCount; num > 0;)
 				{
-					break;
-				}
+					int toRead = num > length ? length : (int)num;
+					int numRead = await ReadAsync(skipBuf.Memory.Slice(0, toRead), ct, isAsync).ConfigureAwait(false);
 
-				num -= numRead;
+					if (numRead == -1)
+					{
+						break;
+					}
+
+					num -= numRead;
+				}
 			}
 		}
 
@@ -377,10 +483,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <remarks>Currently marking is not supported, the return value is always false.</remarks>
 		public bool IsMarkSupported
 		{
-			get
-			{
-				return false;
-			}
+			get { return false; }
 		}
 
 		/// <summary>
@@ -413,7 +516,24 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <returns>
 		/// The next TarEntry in the archive, or null.
 		/// </returns>
-		public TarEntry GetNextEntry()
+		public Task<TarEntry> GetNextEntryAsync(CancellationToken ct) => GetNextEntryAsync(ct, true).AsTask();
+
+		/// <summary>
+		/// Get the next entry in this tar archive. This will skip
+		/// over any remaining data in the current entry, if there
+		/// is one, and place the input stream at the header of the
+		/// next entry, and read the header and instantiate a new
+		/// TarEntry from the header bytes and return that entry.
+		/// If there are no more entries in the archive, null will
+		/// be returned to indicate that the end of the archive has
+		/// been reached.
+		/// </summary>
+		/// <returns>
+		/// The next TarEntry in the archive, or null.
+		/// </returns>
+		public TarEntry GetNextEntry() => GetNextEntryAsync(CancellationToken.None, false).GetAwaiter().GetResult();
+
+		private async ValueTask<TarEntry> GetNextEntryAsync(CancellationToken ct, bool isAsync)
 		{
 			if (hasHitEOF)
 			{
@@ -422,21 +542,18 @@ namespace ICSharpCode.SharpZipLib.Tar
 
 			if (currentEntry != null)
 			{
-				SkipToNextEntry();
+				await SkipToNextEntryAsync(ct, isAsync).ConfigureAwait(false);
 			}
 
-			byte[] headerBuf = tarBuffer.ReadBlock();
+			byte[] headerBuf = ArrayPool<byte>.Shared.Rent(TarBuffer.BlockSize);
+			await tarBuffer.ReadBlockIntAsync(headerBuf, ct, isAsync).ConfigureAwait(false);
 
-			if (headerBuf == null)
-			{
-				hasHitEOF = true;
-			}
-			else if (TarBuffer.IsEndOfArchiveBlock(headerBuf))
+			if (TarBuffer.IsEndOfArchiveBlock(headerBuf))
 			{
 				hasHitEOF = true;
 
 				// Read the second zero-filled block
-				tarBuffer.ReadBlock();
+				await tarBuffer.ReadBlockIntAsync(headerBuf, ct, isAsync).ConfigureAwait(false);
 			}
 			else
 			{
@@ -446,61 +563,73 @@ namespace ICSharpCode.SharpZipLib.Tar
 			if (hasHitEOF)
 			{
 				currentEntry = null;
+				readBuffer?.Dispose();
 			}
 			else
 			{
 				try
 				{
 					var header = new TarHeader();
-					header.ParseBuffer(headerBuf);
+					header.ParseBuffer(headerBuf, encoding);
 					if (!header.IsChecksumValid)
 					{
 						throw new TarException("Header checksum is invalid");
 					}
+
 					this.entryOffset = 0;
 					this.entrySize = header.Size;
 
-					StringBuilder longName = null;
+					string longName = null;
 
 					if (header.TypeFlag == TarHeader.LF_GNU_LONGNAME)
 					{
-						byte[] nameBuffer = new byte[TarBuffer.BlockSize];
-						long numToRead = this.entrySize;
-
-						longName = new StringBuilder();
-
-						while (numToRead > 0)
+						using (var nameBuffer = ExactMemoryPool<byte>.Shared.Rent(TarBuffer.BlockSize))
 						{
-							int numRead = this.Read(nameBuffer, 0, (numToRead > nameBuffer.Length ? nameBuffer.Length : (int)numToRead));
+							long numToRead = this.entrySize;
 
-							if (numRead == -1)
+							var longNameBuilder = StringBuilderPool.Instance.Rent();
+
+							while (numToRead > 0)
 							{
-								throw new InvalidHeaderException("Failed to read long name entry");
+								var length = (numToRead > TarBuffer.BlockSize ? TarBuffer.BlockSize : (int)numToRead);
+								int numRead = await ReadAsync(nameBuffer.Memory.Slice(0, length), ct, isAsync).ConfigureAwait(false);
+
+								if (numRead == -1)
+								{
+									throw new InvalidHeaderException("Failed to read long name entry");
+								}
+
+								longNameBuilder.Append(TarHeader.ParseName(nameBuffer.Memory.Slice(0, numRead).Span,
+									encoding));
+								numToRead -= numRead;
 							}
 
-							longName.Append(TarHeader.ParseName(nameBuffer, 0, numRead).ToString());
-							numToRead -= numRead;
-						}
+							longName = longNameBuilder.ToString();
+							StringBuilderPool.Instance.Return(longNameBuilder);
 
-						SkipToNextEntry();
-						headerBuf = this.tarBuffer.ReadBlock();
+							await SkipToNextEntryAsync(ct, isAsync).ConfigureAwait(false);
+							await this.tarBuffer.ReadBlockIntAsync(headerBuf, ct, isAsync).ConfigureAwait(false);
+						}
 					}
 					else if (header.TypeFlag == TarHeader.LF_GHDR)
-					{  // POSIX global extended header
-					   // Ignore things we dont understand completely for now
-						SkipToNextEntry();
-						headerBuf = this.tarBuffer.ReadBlock();
+					{
+						// POSIX global extended header
+						// Ignore things we dont understand completely for now
+						await SkipToNextEntryAsync(ct, isAsync).ConfigureAwait(false);
+						await this.tarBuffer.ReadBlockIntAsync(headerBuf, ct, isAsync).ConfigureAwait(false);
 					}
 					else if (header.TypeFlag == TarHeader.LF_XHDR)
-					{  // POSIX extended header
-						byte[] nameBuffer = new byte[TarBuffer.BlockSize];
+					{
+						// POSIX extended header
+						byte[] nameBuffer = ArrayPool<byte>.Shared.Rent(TarBuffer.BlockSize);
 						long numToRead = this.entrySize;
 
 						var xhr = new TarExtendedHeaderReader();
 
 						while (numToRead > 0)
 						{
-							int numRead = this.Read(nameBuffer, 0, (numToRead > nameBuffer.Length ? nameBuffer.Length : (int)numToRead));
+							var length = (numToRead > nameBuffer.Length ? nameBuffer.Length : (int)numToRead);
+							int numRead = await ReadAsync(nameBuffer.AsMemory().Slice(0, length), ct, isAsync).ConfigureAwait(false);
 
 							if (numRead == -1)
 							{
@@ -511,42 +640,47 @@ namespace ICSharpCode.SharpZipLib.Tar
 							numToRead -= numRead;
 						}
 
+						ArrayPool<byte>.Shared.Return(nameBuffer);
+
 						if (xhr.Headers.TryGetValue("path", out string name))
 						{
-							longName = new StringBuilder(name);
+							longName = name;
 						}
 
-						SkipToNextEntry();
-						headerBuf = this.tarBuffer.ReadBlock();
+						await SkipToNextEntryAsync(ct, isAsync).ConfigureAwait(false);
+						await this.tarBuffer.ReadBlockIntAsync(headerBuf, ct, isAsync).ConfigureAwait(false);
 					}
 					else if (header.TypeFlag == TarHeader.LF_GNU_VOLHDR)
 					{
 						// TODO: could show volume name when verbose
-						SkipToNextEntry();
-						headerBuf = this.tarBuffer.ReadBlock();
+						await SkipToNextEntryAsync(ct, isAsync).ConfigureAwait(false);
+						await this.tarBuffer.ReadBlockIntAsync(headerBuf, ct, isAsync).ConfigureAwait(false);
 					}
 					else if (header.TypeFlag != TarHeader.LF_NORMAL &&
-							 header.TypeFlag != TarHeader.LF_OLDNORM &&
-							 header.TypeFlag != TarHeader.LF_LINK &&
-							 header.TypeFlag != TarHeader.LF_SYMLINK &&
-							 header.TypeFlag != TarHeader.LF_DIR)
+					         header.TypeFlag != TarHeader.LF_OLDNORM &&
+					         header.TypeFlag != TarHeader.LF_LINK &&
+					         header.TypeFlag != TarHeader.LF_SYMLINK &&
+					         header.TypeFlag != TarHeader.LF_DIR)
 					{
 						// Ignore things we dont understand completely for now
-						SkipToNextEntry();
-						headerBuf = tarBuffer.ReadBlock();
+						await SkipToNextEntryAsync(ct, isAsync).ConfigureAwait(false);
+						await tarBuffer.ReadBlockIntAsync(headerBuf, ct, isAsync).ConfigureAwait(false);
 					}
 
 					if (entryFactory == null)
 					{
-						currentEntry = new TarEntry(headerBuf);
+						currentEntry = new TarEntry(headerBuf, encoding);
+						readBuffer?.Dispose();
+
 						if (longName != null)
 						{
-							currentEntry.Name = longName.ToString();
+							currentEntry.Name = longName;
 						}
 					}
 					else
 					{
 						currentEntry = entryFactory.CreateEntry(headerBuf);
+						readBuffer?.Dispose();
 					}
 
 					// Magic was checked here for 'ustar' but there are multiple valid possibilities
@@ -562,11 +696,16 @@ namespace ICSharpCode.SharpZipLib.Tar
 					entrySize = 0;
 					entryOffset = 0;
 					currentEntry = null;
+					readBuffer?.Dispose();
+
 					string errorText = string.Format("Bad header in record {0} block {1} {2}",
 						tarBuffer.CurrentRecord, tarBuffer.CurrentBlock, ex.Message);
 					throw new InvalidHeaderException(errorText);
 				}
 			}
+
+			ArrayPool<byte>.Shared.Return(headerBuf);
+
 			return currentEntry;
 		}
 
@@ -577,30 +716,55 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <param name="outputStream">
 		/// The OutputStream into which to write the entry's data.
 		/// </param>
-		public void CopyEntryContents(Stream outputStream)
+		/// <param name="ct"></param>
+		public Task CopyEntryContentsAsync(Stream outputStream, CancellationToken ct) =>
+			CopyEntryContentsAsync(outputStream, ct, true).AsTask();
+
+		/// <summary>
+		/// Copies the contents of the current tar archive entry directly into
+		/// an output stream.
+		/// </summary>
+		/// <param name="outputStream">
+		/// The OutputStream into which to write the entry's data.
+		/// </param>
+		public void CopyEntryContents(Stream outputStream) =>
+			CopyEntryContentsAsync(outputStream, CancellationToken.None, false).GetAwaiter().GetResult();
+
+		private async ValueTask CopyEntryContentsAsync(Stream outputStream, CancellationToken ct, bool isAsync)
 		{
-			byte[] tempBuffer = new byte[32 * 1024];
+			byte[] tempBuffer = ArrayPool<byte>.Shared.Rent(32 * 1024);
 
 			while (true)
 			{
-				int numRead = Read(tempBuffer, 0, tempBuffer.Length);
+				int numRead = await ReadAsync(tempBuffer, ct, isAsync).ConfigureAwait(false);
 				if (numRead <= 0)
 				{
 					break;
 				}
-				outputStream.Write(tempBuffer, 0, numRead);
+
+				if (isAsync)
+				{
+					await outputStream.WriteAsync(tempBuffer, 0, numRead, ct).ConfigureAwait(false);
+				}
+				else
+				{
+					outputStream.Write(tempBuffer, 0, numRead);
+				}
 			}
+
+			ArrayPool<byte>.Shared.Return(tempBuffer);
 		}
 
-		private void SkipToNextEntry()
+		private async ValueTask SkipToNextEntryAsync(CancellationToken ct, bool isAsync)
 		{
 			long numToSkip = entrySize - entryOffset;
 
 			if (numToSkip > 0)
 			{
-				Skip(numToSkip);
+				await SkipAsync(numToSkip, ct, isAsync).ConfigureAwait(false);
 			}
 
+			readBuffer?.Dispose();
 			readBuffer = null;
 		}
 
@@ -611,6 +775,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public interface IEntryFactory
 		{
+			// This interface does not considering name encoding.
+			// How this interface should be?
 			/// <summary>
 			/// Create an entry based on name alone
 			/// </summary>
@@ -635,7 +801,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 			/// Create a tar entry based on the header information passed
 			/// </summary>
 			/// <param name="headerBuffer">
-			/// Buffer containing header information to create an an entry from.
+			/// Buffer containing header information to create an entry from.
 			/// </param>
 			/// <returns>
 			/// Created TarEntry or descendant class
@@ -648,6 +814,25 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public class EntryFactoryAdapter : IEntryFactory
 		{
+			Encoding nameEncoding;
+
+			/// <summary>
+			/// Construct standard entry factory class with ASCII name encoding
+			/// </summary>
+			[Obsolete("No Encoding for Name field is specified, any non-ASCII bytes will be discarded")]
+			public EntryFactoryAdapter()
+			{
+			}
+
+			/// <summary>
+			/// Construct standard entry factory with name encoding
+			/// </summary>
+			/// <param name="nameEncoding">The <see cref="Encoding"/> used for the Name fields, or null for ASCII only</param>
+			public EntryFactoryAdapter(Encoding nameEncoding)
+			{
+				this.nameEncoding = nameEncoding;
+			}
+
 			/// <summary>
 			/// Create a <see cref="TarEntry"/> based on named
 			/// </summary>
@@ -675,7 +860,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 			/// <returns>A new <see cref="TarEntry"/></returns>
 			public TarEntry CreateEntry(byte[] headerBuffer)
 			{
-				return new TarEntry(headerBuffer);
+				return new TarEntry(headerBuffer, nameEncoding);
 			}
 		}
 
@@ -699,7 +884,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <summary>
 		/// Buffer used with calls to <code>Read()</code>
 		/// </summary>
-		protected byte[] readBuffer;
+		protected IMemoryOwner<byte> readBuffer;
 
 		/// <summary>
 		/// Working buffer
@@ -720,6 +905,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// Stream used as the source of input data.
 		/// </summary>
 		private readonly Stream inputStream;
+
+		private readonly Encoding encoding;
 
 		#endregion Instance Fields
 	}

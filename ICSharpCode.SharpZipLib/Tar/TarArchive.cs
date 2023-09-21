@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Numerics;
 using System.Text;
+using ICSharpCode.SharpZipLib.Core;
 
 namespace ICSharpCode.SharpZipLib.Tar
 {
@@ -61,7 +63,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 		}
 
 		/// <summary>
-		/// Initalise a TarArchive for input.
+		/// Initialise a TarArchive for input.
 		/// </summary>
 		/// <param name="stream">The <see cref="TarInputStream"/> to use for input.</param>
 		protected TarArchive(TarInputStream stream)
@@ -100,7 +102,22 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		/// <param name="inputStream">The stream to retrieve archive data from.</param>
 		/// <returns>Returns a new <see cref="TarArchive"/> suitable for reading from.</returns>
+		[Obsolete("No Encoding for Name field is specified, any non-ASCII bytes will be discarded")]
 		public static TarArchive CreateInputTarArchive(Stream inputStream)
+		{
+			return CreateInputTarArchive(inputStream, null);
+		}
+
+		/// <summary>
+		/// The InputStream based constructors create a TarArchive for the
+		/// purposes of extracting or listing a tar archive. Thus, use
+		/// these constructors when you wish to extract files from or list
+		/// the contents of an existing tar archive.
+		/// </summary>
+		/// <param name="inputStream">The stream to retrieve archive data from.</param>
+		/// <param name="nameEncoding">The <see cref="Encoding"/> used for the Name fields, or null for ASCII only</param>
+		/// <returns>Returns a new <see cref="TarArchive"/> suitable for reading from.</returns>
+		public static TarArchive CreateInputTarArchive(Stream inputStream, Encoding nameEncoding)
 		{
 			if (inputStream == null)
 			{
@@ -116,7 +133,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 			}
 			else
 			{
-				result = CreateInputTarArchive(inputStream, TarBuffer.DefaultBlockFactor);
+				result = CreateInputTarArchive(inputStream, TarBuffer.DefaultBlockFactor, nameEncoding);
 			}
 			return result;
 		}
@@ -127,7 +144,20 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <param name="inputStream">A stream containing the tar archive contents</param>
 		/// <param name="blockFactor">The blocking factor to apply</param>
 		/// <returns>Returns a <see cref="TarArchive"/> suitable for reading.</returns>
+		[Obsolete("No Encoding for Name field is specified, any non-ASCII bytes will be discarded")]
 		public static TarArchive CreateInputTarArchive(Stream inputStream, int blockFactor)
+		{
+			return CreateInputTarArchive(inputStream, blockFactor, null);
+		}
+
+		/// <summary>
+		/// Create TarArchive for reading setting block factor
+		/// </summary>
+		/// <param name="inputStream">A stream containing the tar archive contents</param>
+		/// <param name="blockFactor">The blocking factor to apply</param>
+		/// <param name="nameEncoding">The <see cref="Encoding"/> used for the Name fields, or null for ASCII only</param>
+		/// <returns>Returns a <see cref="TarArchive"/> suitable for reading.</returns>
+		public static TarArchive CreateInputTarArchive(Stream inputStream, int blockFactor, Encoding nameEncoding)
 		{
 			if (inputStream == null)
 			{
@@ -139,15 +169,15 @@ namespace ICSharpCode.SharpZipLib.Tar
 				throw new ArgumentException("TarInputStream not valid");
 			}
 
-			return new TarArchive(new TarInputStream(inputStream, blockFactor));
+			return new TarArchive(new TarInputStream(inputStream, blockFactor, nameEncoding));
 		}
-
 		/// <summary>
 		/// Create a TarArchive for writing to, using the default blocking factor
 		/// </summary>
 		/// <param name="outputStream">The <see cref="Stream"/> to write to</param>
+		/// <param name="nameEncoding">The <see cref="Encoding"/> used for the Name fields, or null for ASCII only</param>
 		/// <returns>Returns a <see cref="TarArchive"/> suitable for writing.</returns>
-		public static TarArchive CreateOutputTarArchive(Stream outputStream)
+		public static TarArchive CreateOutputTarArchive(Stream outputStream, Encoding nameEncoding)
 		{
 			if (outputStream == null)
 			{
@@ -163,9 +193,18 @@ namespace ICSharpCode.SharpZipLib.Tar
 			}
 			else
 			{
-				result = CreateOutputTarArchive(outputStream, TarBuffer.DefaultBlockFactor);
+				result = CreateOutputTarArchive(outputStream, TarBuffer.DefaultBlockFactor, nameEncoding);
 			}
 			return result;
+		}
+		/// <summary>
+		/// Create a TarArchive for writing to, using the default blocking factor
+		/// </summary>
+		/// <param name="outputStream">The <see cref="Stream"/> to write to</param>
+		/// <returns>Returns a <see cref="TarArchive"/> suitable for writing.</returns>
+		public static TarArchive CreateOutputTarArchive(Stream outputStream)
+		{
+			return CreateOutputTarArchive(outputStream, null);
 		}
 
 		/// <summary>
@@ -175,6 +214,17 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <param name="blockFactor">The blocking factor to use for buffering.</param>
 		/// <returns>Returns a <see cref="TarArchive"/> suitable for writing.</returns>
 		public static TarArchive CreateOutputTarArchive(Stream outputStream, int blockFactor)
+		{
+			return CreateOutputTarArchive(outputStream, blockFactor, null);
+		}
+		/// <summary>
+		/// Create a <see cref="TarArchive">tar archive</see> for writing.
+		/// </summary>
+		/// <param name="outputStream">The stream to write to</param>
+		/// <param name="blockFactor">The blocking factor to use for buffering.</param>
+		/// <param name="nameEncoding">The <see cref="Encoding"/> used for the Name fields, or null for ASCII only</param>
+		/// <returns>Returns a <see cref="TarArchive"/> suitable for writing.</returns>
+		public static TarArchive CreateOutputTarArchive(Stream outputStream, int blockFactor, Encoding nameEncoding)
 		{
 			if (outputStream == null)
 			{
@@ -186,7 +236,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 				throw new ArgumentException("TarOutputStream is not valid");
 			}
 
-			return new TarArchive(new TarOutputStream(outputStream, blockFactor));
+			return new TarArchive(new TarOutputStream(outputStream, blockFactor, nameEncoding));
 		}
 
 		#endregion Static factory methods
@@ -306,8 +356,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 				{
 					throw new ObjectDisposedException("TarArchive");
 				}
-				// Convert to forward slashes for matching. Trim trailing / for correct final path
-				rootPath = value.Replace('\\', '/').TrimEnd('/');
+				rootPath = value.ToTarArchivePath().TrimEnd('/');
 			}
 		}
 
@@ -546,12 +595,24 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <param name="destinationDirectory">
 		/// The destination directory into which to extract.
 		/// </param>
-		public void ExtractContents(string destinationDirectory)
+		public void ExtractContents(string destinationDirectory) 
+			=> ExtractContents(destinationDirectory, false);
+
+		/// <summary>
+		/// Perform the "extract" command and extract the contents of the archive.
+		/// </summary>
+		/// <param name="destinationDirectory">
+		/// The destination directory into which to extract.
+		/// </param>
+		/// <param name="allowParentTraversal">Allow parent directory traversal in file paths (e.g. ../file)</param>
+		public void ExtractContents(string destinationDirectory, bool allowParentTraversal)
 		{
 			if (isDisposed)
 			{
 				throw new ObjectDisposedException("TarArchive");
 			}
+
+			var fullDistDir = Path.GetFullPath(destinationDirectory).TrimEnd('/', '\\');
 
 			while (true)
 			{
@@ -565,7 +626,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 				if (entry.TarHeader.TypeFlag == TarHeader.LF_LINK || entry.TarHeader.TypeFlag == TarHeader.LF_SYMLINK)
 					continue;
 
-				ExtractEntry(destinationDirectory, entry);
+				ExtractEntry(fullDistDir, entry, allowParentTraversal);
 			}
 		}
 
@@ -579,7 +640,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <param name="entry">
 		/// The TarEntry returned by tarIn.GetNextEntry().
 		/// </param>
-		private void ExtractEntry(string destDir, TarEntry entry)
+		/// <param name="allowParentTraversal">Allow parent directory traversal in file paths (e.g. ../file)</param>
+		private void ExtractEntry(string destDir, TarEntry entry, bool allowParentTraversal)
 		{
 			OnProgressMessageEvent(entry, null);
 
@@ -595,6 +657,14 @@ namespace ICSharpCode.SharpZipLib.Tar
 			name = name.Replace('/', Path.DirectorySeparatorChar);
 
 			string destFile = Path.Combine(destDir, name);
+			var destFileDir = Path.GetDirectoryName(Path.GetFullPath(destFile)) ?? "";
+
+			var isRootDir = entry.IsDirectory && entry.Name == "";
+
+			if (!allowParentTraversal && !isRootDir && !destFileDir.StartsWith(destDir, StringComparison.InvariantCultureIgnoreCase))
+			{
+				throw new InvalidNameException("Parent traversal in paths is not allowed");
+			}
 
 			if (entry.IsDirectory)
 			{
@@ -756,7 +826,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 			{
 				if (!IsBinary(entryFilename))
 				{
-					tempFileName = Path.GetTempFileName();
+					tempFileName = PathUtils.GetTempFileName();
 
 					using (StreamReader inStream = File.OpenText(entryFilename))
 					{

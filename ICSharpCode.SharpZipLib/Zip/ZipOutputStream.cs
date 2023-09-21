@@ -1,9 +1,15 @@
 using ICSharpCode.SharpZipLib.Checksum;
+using ICSharpCode.SharpZipLib.Core;
+using ICSharpCode.SharpZipLib.Encryption;
 using ICSharpCode.SharpZipLib.Zip.Compression;
 using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ICSharpCode.SharpZipLib.Zip
 {
@@ -75,6 +81,16 @@ namespace ICSharpCode.SharpZipLib.Zip
 		{
 		}
 
+		/// <summary>
+		/// Creates a new Zip output stream, writing a zip archive.
+		/// </summary>
+		/// <param name="baseOutputStream">The output stream to which the archive contents are written.</param>
+		/// <param name="stringCodec"></param>
+		public ZipOutputStream(Stream baseOutputStream, StringCodec stringCodec) : this(baseOutputStream)
+		{
+			_stringCodec = stringCodec;
+		}
+
 		#endregion Constructors
 
 		/// <summary>
@@ -95,13 +111,12 @@ namespace ICSharpCode.SharpZipLib.Zip
 		/// <param name="comment">
 		/// The comment text for the entire archive.
 		/// </param>
-		/// <exception name ="ArgumentOutOfRangeException">
+		/// <exception cref="ArgumentOutOfRangeException">
 		/// The converted comment is longer than 0xffff bytes.
 		/// </exception>
 		public void SetComment(string comment)
 		{
-			// TODO: Its not yet clear how to handle unicode comments here.
-			byte[] commentBytes = ZipStrings.ConvertToArray(comment);
+			byte[] commentBytes = _stringCodec.ZipArchiveCommentEncoding.GetBytes(comment);
 			if (commentBytes.Length > 0xffff)
 			{
 				throw new ArgumentOutOfRangeException(nameof(comment));
@@ -147,6 +162,35 @@ namespace ICSharpCode.SharpZipLib.Zip
 		}
 
 		/// <summary>
+		/// Used for transforming the names of entries added by <see cref="PutNextEntry(ZipEntry)"/>.
+		/// Defaults to <see cref="PathTransformer"/>, set to null to disable transforms and use names as supplied.
+		/// </summary>
+		public INameTransform NameTransform { get; set; } = new PathTransformer();
+
+		/// <summary>
+		/// Get/set the password used for encryption.
+		/// </summary>
+		/// <remarks>When set to null or if the password is empty no encryption is performed</remarks>
+		public string Password
+		{
+			get
+			{
+				return password;
+			}
+			set
+			{
+				if ((value != null) && (value.Length == 0))
+				{
+					password = null;
+				}
+				else
+				{
+					password = value;
+				}
+			}
+		}
+
+		/// <summary>
 		/// Write an unsigned short in little endian byte order.
 		/// </summary>
 		private void WriteLeShort(int value)
@@ -182,6 +226,15 @@ namespace ICSharpCode.SharpZipLib.Zip
 			}
 		}
 
+		// Apply any configured transforms/cleaning to the name of the supplied entry.
+		private void TransformEntryName(ZipEntry entry)
+		{
+			if (NameTransform == null) return;
+			entry.Name = entry.IsDirectory 
+				? NameTransform.TransformDirectory(entry.Name) 
+				: NameTransform.TransformFile(entry.Name);
+		}
+
 		/// <summary>
 		/// Starts a new Zip entry. It automatically closes the previous
 		/// entry if present.
@@ -196,7 +249,7 @@ namespace ICSharpCode.SharpZipLib.Zip
 		/// if entry passed is null.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
-		/// if an I/O error occured.
+		/// if an I/O error occurred.
 		/// </exception>
 		/// <exception cref="System.InvalidOperationException">
 		/// if stream was finished
@@ -206,7 +259,105 @@ namespace ICSharpCode.SharpZipLib.Zip
 		/// Entry name is too long<br/>
 		/// Finish has already been called<br/>
 		/// </exception>
+		/// <exception cref="System.NotImplementedException">
+		/// The Compression method specified for the entry is unsupported.
+		/// </exception>
 		public void PutNextEntry(ZipEntry entry)
+		{
+			if (curEntry != null)
+			{
+				CloseEntry();
+			}
+
+			PutNextEntry(baseOutputStream_, entry);
+			
+			if (entry.IsCrypted)
+			{
+				WriteOutput(GetEntryEncryptionHeader(entry));
+			}
+		}
+
+		/// <summary>
+		/// Starts a new passthrough Zip entry. It automatically closes the previous
+		/// entry if present.
+		/// Passthrough entry is an entry that is created from compressed data. 
+		/// It is useful to avoid recompression to save CPU resources if compressed data is already disposable.
+		/// All entry elements bar name, crc, size and compressed size are optional, but must be correct if present.
+		/// Compression should be set to Deflated.
+		/// </summary>
+		/// <param name="entry">
+		/// the entry.
+		/// </param>
+		/// <exception cref="System.ArgumentNullException">
+		/// if entry passed is null.
+		/// </exception>
+		/// <exception cref="System.IO.IOException">
+		/// if an I/O error occurred.
+		/// </exception>
+		/// <exception cref="System.InvalidOperationException">
+		/// if stream was finished.
+		/// </exception>
+		/// <exception cref="ZipException">
+		/// Crc is not set<br/>
+		/// Size is not set<br/>
+		/// CompressedSize is not set<br/>
+		/// CompressionMethod is not Deflate<br/>
+		/// Too many entries in the Zip file<br/>
+		/// Entry name is too long<br/>
+		/// Finish has already been called<br/>
+		/// </exception>
+		/// <exception cref="System.NotImplementedException">
+		/// The Compression method specified for the entry is unsupported<br/>
+		/// Entry is encrypted<br/>
+		/// </exception>
+		public void PutNextPassthroughEntry(ZipEntry entry) 
+		{
+			if(curEntry != null) 
+			{
+				CloseEntry();
+			}
+
+			if(entry.Crc < 0) 
+			{
+				throw new ZipException("Crc must be set for passthrough entry");
+			}
+
+			if(entry.Size < 0) 
+			{
+				throw new ZipException("Size must be set for passthrough entry");
+			}
+
+			if(entry.CompressedSize < 0) 
+			{
+				throw new ZipException("CompressedSize must be set for passthrough entry");
+			}
+
+			if(entry.CompressionMethod != CompressionMethod.Deflated)
+			{
+				throw new NotImplementedException("Only Deflated entries are supported for passthrough");
+			}
+
+			if(!string.IsNullOrEmpty(Password)) 
+			{
+				throw new NotImplementedException("Encrypted passthrough entries are not supported");
+			}
+
+			PutNextEntry(baseOutputStream_, entry, 0, true);
+		}
+
+
+		private void WriteOutput(byte[] bytes) 
+			=> baseOutputStream_.Write(bytes, 0, bytes.Length);
+		
+		private Task WriteOutputAsync(byte[] bytes)
+			=> baseOutputStream_.WriteAsync(bytes, 0, bytes.Length);
+
+		private byte[] GetEntryEncryptionHeader(ZipEntry entry) => 
+			entry.AESKeySize > 0 
+				? InitializeAESPassword(entry, Password)
+				: CreateZipCryptoHeader(entry.Crc < 0 ? entry.DosTime << 16 : entry.Crc);
+
+		internal void PutNextEntry(Stream stream, ZipEntry entry, long streamOffset = 0, bool passthroughEntry = false)
 		{
 			if (entry == null)
 			{
@@ -218,17 +369,27 @@ namespace ICSharpCode.SharpZipLib.Zip
 				throw new InvalidOperationException("ZipOutputStream was finished");
 			}
 
-			if (curEntry != null)
-			{
-				CloseEntry();
-			}
-
 			if (entries.Count == int.MaxValue)
 			{
 				throw new ZipException("Too many entries for Zip file");
 			}
 
 			CompressionMethod method = entry.CompressionMethod;
+
+			// Check that the compression is one that we support
+			if (method != CompressionMethod.Deflated && method != CompressionMethod.Stored)
+			{
+				throw new NotImplementedException("Compression method not supported");
+			}
+
+			// A password must have been set in order to add AES encrypted entries
+			if (entry.AESKeySize > 0 && string.IsNullOrEmpty(this.Password))
+			{
+				throw new InvalidOperationException("The Password property must be set before AES encrypted entries can be added");
+			}
+
+			entryIsPassthrough = passthroughEntry;
+
 			int compressionLevel = defaultCompressionLevel;
 
 			// Clear flags that the library manages internally
@@ -238,7 +399,7 @@ namespace ICSharpCode.SharpZipLib.Zip
 			bool headerInfoAvailable;
 
 			// No need to compress - definitely no data.
-			if (entry.Size == 0)
+			if (entry.Size == 0 && !entryIsPassthrough)
 			{
 				entry.CompressedSize = entry.Size;
 				entry.Crc = 0;
@@ -301,163 +462,87 @@ namespace ICSharpCode.SharpZipLib.Zip
 			entry.CompressionMethod = (CompressionMethod)method;
 
 			curMethod = method;
-			sizePatchPos = -1;
 
 			if ((useZip64_ == UseZip64.On) || ((entry.Size < 0) && (useZip64_ == UseZip64.Dynamic)))
 			{
 				entry.ForceZip64();
 			}
 
+			// Apply any required transforms to the entry name
+			TransformEntryName(entry);
+
 			// Write the local file header
-			WriteLeInt(ZipConstants.LocalHeaderSignature);
+			offset += ZipFormat.WriteLocalHeader(stream, entry, out var entryPatchData, 
+				headerInfoAvailable, patchEntryHeader, streamOffset, _stringCodec);
 
-			WriteLeShort(entry.Version);
-			WriteLeShort(entry.Flags);
-			WriteLeShort((byte)entry.CompressionMethodForHeader);
-			WriteLeInt((int)entry.DosTime);
+			patchData = entryPatchData;
 
-			// TODO: Refactor header writing.  Its done in several places.
-			if (headerInfoAvailable)
-			{
-				WriteLeInt((int)entry.Crc);
-				if (entry.LocalHeaderRequiresZip64)
-				{
-					WriteLeInt(-1);
-					WriteLeInt(-1);
-				}
-				else
-				{
-					WriteLeInt(entry.IsCrypted ? (int)entry.CompressedSize + ZipConstants.CryptoHeaderSize : (int)entry.CompressedSize);
-					WriteLeInt((int)entry.Size);
-				}
-			}
-			else
-			{
-				if (patchEntryHeader)
-				{
-					crcPatchPos = baseOutputStream_.Position;
-				}
-				WriteLeInt(0);  // Crc
-
-				if (patchEntryHeader)
-				{
-					sizePatchPos = baseOutputStream_.Position;
-				}
-
-				// For local header both sizes appear in Zip64 Extended Information
-				if (entry.LocalHeaderRequiresZip64 || patchEntryHeader)
-				{
-					WriteLeInt(-1);
-					WriteLeInt(-1);
-				}
-				else
-				{
-					WriteLeInt(0);  // Compressed size
-					WriteLeInt(0);  // Uncompressed size
-				}
-			}
-
-			byte[] name = ZipStrings.ConvertToArray(entry.Flags, entry.Name);
-
-			if (name.Length > 0xFFFF)
-			{
-				throw new ZipException("Entry name too long.");
-			}
-
-			var ed = new ZipExtraData(entry.ExtraData);
-
-			if (entry.LocalHeaderRequiresZip64)
-			{
-				ed.StartNewEntry();
-				if (headerInfoAvailable)
-				{
-					ed.AddLeLong(entry.Size);
-					ed.AddLeLong(entry.CompressedSize);
-				}
-				else
-				{
-					ed.AddLeLong(-1);
-					ed.AddLeLong(-1);
-				}
-				ed.AddNewEntry(1);
-
-				if (!ed.Find(1))
-				{
-					throw new ZipException("Internal error cant find extra data");
-				}
-
-				if (patchEntryHeader)
-				{
-					sizePatchPos = ed.CurrentReadIndex;
-				}
-			}
-			else
-			{
-				ed.Delete(1);
-			}
-
-			if (entry.AESKeySize > 0)
-			{
-				AddExtraDataAES(entry, ed);
-			}
-			byte[] extra = ed.GetEntryData();
-
-			WriteLeShort(name.Length);
-			WriteLeShort(extra.Length);
-
-			if (name.Length > 0)
-			{
-				baseOutputStream_.Write(name, 0, name.Length);
-			}
-
-			if (entry.LocalHeaderRequiresZip64 && patchEntryHeader)
-			{
-				sizePatchPos += baseOutputStream_.Position;
-			}
-
-			if (extra.Length > 0)
-			{
-				baseOutputStream_.Write(extra, 0, extra.Length);
-			}
-
-			offset += ZipConstants.LocalHeaderBaseSize + name.Length + extra.Length;
 			// Fix offsetOfCentraldir for AES
 			if (entry.AESKeySize > 0)
 				offset += entry.AESOverheadSize;
 
 			// Activate the entry.
 			curEntry = entry;
+			size = 0;
+
+			if(entryIsPassthrough)
+				return;
+
 			crc.Reset();
 			if (method == CompressionMethod.Deflated)
 			{
 				deflater_.Reset();
 				deflater_.SetLevel(compressionLevel);
 			}
-			size = 0;
+		}
 
-			if (entry.IsCrypted)
+		/// <summary>
+		/// Starts a new Zip entry. It automatically closes the previous
+		/// entry if present.
+		/// All entry elements bar name are optional, but must be correct if present.
+		/// If the compression method is stored and the output is not patchable
+		/// the compression for that entry is automatically changed to deflate level 0
+		/// </summary>
+		/// <param name="entry">
+		/// the entry.
+		/// </param>
+		/// <param name="ct">The <see cref="CancellationToken"/> that can be used to cancel the operation.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// if entry passed is null.
+		/// </exception>
+		/// <exception cref="System.IO.IOException">
+		/// if an I/O error occured.
+		/// </exception>
+		/// <exception cref="System.InvalidOperationException">
+		/// if stream was finished
+		/// </exception>
+		/// <exception cref="ZipException">
+		/// Too many entries in the Zip file<br/>
+		/// Entry name is too long<br/>
+		/// Finish has already been called<br/>
+		/// </exception>
+		/// <exception cref="System.NotImplementedException">
+		/// The Compression method specified for the entry is unsupported.
+		/// </exception>
+		public async Task PutNextEntryAsync(ZipEntry entry, CancellationToken ct = default)
+		{
+			if (curEntry != null) await CloseEntryAsync(ct).ConfigureAwait(false);
+			var position = CanPatchEntries ? baseOutputStream_.Position : -1; 
+			await baseOutputStream_.WriteProcToStreamAsync(s =>
 			{
-				if (entry.AESKeySize > 0)
-				{
-					WriteAESHeader(entry);
-				}
-				else
-				{
-					if (entry.Crc < 0)
-					{            // so testing Zip will says its ok
-						WriteEncryptionHeader(entry.DosTime << 16);
-					}
-					else
-					{
-						WriteEncryptionHeader(entry.Crc);
-					}
-				}
-			}
+				PutNextEntry(s, entry, position);
+			}, ct).ConfigureAwait(false);
+			
+			if (!entry.IsCrypted) return;
+			await WriteOutputAsync(GetEntryEncryptionHeader(entry)).ConfigureAwait(false);
 		}
 
 		/// <summary>
 		/// Closes the current entry, updating header and footer information as required
 		/// </summary>
+		/// <exception cref="ZipException">
+		/// Invalid entry field values.
+		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurs.
 		/// </exception>
@@ -466,37 +551,111 @@ namespace ICSharpCode.SharpZipLib.Zip
 		/// </exception>
 		public void CloseEntry()
 		{
-			if (curEntry == null)
+			// Note: This method will run synchronously
+			FinishCompressionSyncOrAsync(null).GetAwaiter().GetResult();
+			WriteEntryFooter(baseOutputStream_);
+
+			// Patch the header if possible
+			if (patchEntryHeader)
 			{
-				throw new InvalidOperationException("No open entry");
+				patchEntryHeader = false;
+				ZipFormat.PatchLocalHeaderSync(baseOutputStream_, curEntry, patchData);
 			}
 
-			long csize = size;
+			entries.Add(curEntry);
+			curEntry = null;
+		}
+
+		private async Task FinishCompressionSyncOrAsync(CancellationToken? ct)
+		{
+			// Compression handled externally
+			if (entryIsPassthrough) return;
 
 			// First finish the deflater, if appropriate
 			if (curMethod == CompressionMethod.Deflated)
 			{
 				if (size >= 0)
 				{
-					base.Finish();
-					csize = deflater_.TotalOut;
+					if (ct.HasValue) {
+						await base.FinishAsync(ct.Value).ConfigureAwait(false);
+					} else {
+						base.Finish();
+					}
 				}
 				else
 				{
 					deflater_.Reset();
 				}
 			}
-			else if (curMethod == CompressionMethod.Stored)
+			if (curMethod == CompressionMethod.Stored)
 			{
-				// This is done by Finsh() for Deflated entries, but we need to do it
+				// This is done by Finish() for Deflated entries, but we need to do it
 				// ourselves for Stored ones
 				base.GetAuthCodeIfAES();
+			}
+
+			return;
+		}
+
+		/// <inheritdoc cref="CloseEntry"/>
+		public async Task CloseEntryAsync(CancellationToken ct)
+		{
+			await FinishCompressionSyncOrAsync(ct).ConfigureAwait(false);
+			await baseOutputStream_.WriteProcToStreamAsync(WriteEntryFooter, ct).ConfigureAwait(false);
+
+			// Patch the header if possible
+			if (patchEntryHeader)
+			{
+				patchEntryHeader = false;
+				await ZipFormat.PatchLocalHeaderAsync(baseOutputStream_, curEntry, patchData, ct).ConfigureAwait(false);
+			}
+
+			entries.Add(curEntry);
+			curEntry = null;
+		}
+
+		internal void WriteEntryFooter(Stream stream)
+		{
+			if (curEntry == null)
+			{
+				throw new InvalidOperationException("No open entry");
+			}
+
+			if(entryIsPassthrough) 
+			{
+				if(curEntry.CompressedSize != size) 
+				{
+					throw new ZipException($"compressed size was {size}, but {curEntry.CompressedSize} expected");
+				}
+
+				offset += size;
+				return;
+			}
+
+			long csize = size;
+
+			if (curMethod == CompressionMethod.Deflated && size >= 0)
+			{
+				csize = deflater_.TotalOut;
 			}
 
 			// Write the AES Authentication Code (a hash of the compressed and encrypted data)
 			if (curEntry.AESKeySize > 0)
 			{
-				baseOutputStream_.Write(AESAuthCode, 0, 10);
+				stream.Write(AESAuthCode, 0, 10);
+				// Always use 0 as CRC for AE-2 format
+				curEntry.Crc = 0;
+			}
+			else
+			{
+				if (curEntry.Crc < 0)
+				{
+					curEntry.Crc = crc.Value;
+				}
+				else if (curEntry.Crc != crc.Value)
+				{
+					throw new ZipException($"crc was {crc.Value}, but {curEntry.Crc} was expected");
+				}
 			}
 
 			if (curEntry.Size < 0)
@@ -505,7 +664,7 @@ namespace ICSharpCode.SharpZipLib.Zip
 			}
 			else if (curEntry.Size != size)
 			{
-				throw new ZipException("size was " + size + ", but I expected " + curEntry.Size);
+				throw new ZipException($"size was {size}, but {curEntry.Size} was expected");
 			}
 
 			if (curEntry.CompressedSize < 0)
@@ -514,137 +673,104 @@ namespace ICSharpCode.SharpZipLib.Zip
 			}
 			else if (curEntry.CompressedSize != csize)
 			{
-				throw new ZipException("compressed size was " + csize + ", but I expected " + curEntry.CompressedSize);
-			}
-
-			if (curEntry.Crc < 0)
-			{
-				curEntry.Crc = crc.Value;
-			}
-			else if (curEntry.Crc != crc.Value)
-			{
-				throw new ZipException("crc was " + crc.Value + ", but I expected " + curEntry.Crc);
+				throw new ZipException($"compressed size was {csize}, but {curEntry.CompressedSize} expected");
 			}
 
 			offset += csize;
 
 			if (curEntry.IsCrypted)
 			{
-				if (curEntry.AESKeySize > 0)
-				{
-					curEntry.CompressedSize += curEntry.AESOverheadSize;
-				}
-				else
-				{
-					curEntry.CompressedSize += ZipConstants.CryptoHeaderSize;
-				}
-			}
-
-			// Patch the header if possible
-			if (patchEntryHeader)
-			{
-				patchEntryHeader = false;
-
-				long curPos = baseOutputStream_.Position;
-				baseOutputStream_.Seek(crcPatchPos, SeekOrigin.Begin);
-				WriteLeInt((int)curEntry.Crc);
-
-				if (curEntry.LocalHeaderRequiresZip64)
-				{
-					if (sizePatchPos == -1)
-					{
-						throw new ZipException("Entry requires zip64 but this has been turned off");
-					}
-
-					baseOutputStream_.Seek(sizePatchPos, SeekOrigin.Begin);
-					WriteLeLong(curEntry.Size);
-					WriteLeLong(curEntry.CompressedSize);
-				}
-				else
-				{
-					WriteLeInt((int)curEntry.CompressedSize);
-					WriteLeInt((int)curEntry.Size);
-				}
-				baseOutputStream_.Seek(curPos, SeekOrigin.Begin);
+				curEntry.CompressedSize += curEntry.EncryptionOverheadSize;
 			}
 
 			// Add data descriptor if flagged as required
 			if ((curEntry.Flags & 8) != 0)
 			{
-				WriteLeInt(ZipConstants.DataDescriptorSignature);
-				WriteLeInt(unchecked((int)curEntry.Crc));
+				stream.WriteLEInt(ZipConstants.DataDescriptorSignature);
+				stream.WriteLEInt(unchecked((int)curEntry.Crc));
 
 				if (curEntry.LocalHeaderRequiresZip64)
 				{
-					WriteLeLong(curEntry.CompressedSize);
-					WriteLeLong(curEntry.Size);
+					stream.WriteLELong(curEntry.CompressedSize);
+					stream.WriteLELong(curEntry.Size);
 					offset += ZipConstants.Zip64DataDescriptorSize;
 				}
 				else
 				{
-					WriteLeInt((int)curEntry.CompressedSize);
-					WriteLeInt((int)curEntry.Size);
+					stream.WriteLEInt((int)curEntry.CompressedSize);
+					stream.WriteLEInt((int)curEntry.Size);
 					offset += ZipConstants.DataDescriptorSize;
 				}
 			}
-
-			entries.Add(curEntry);
-			curEntry = null;
 		}
 
-		private void WriteEncryptionHeader(long crcValue)
+
+		
+		// File format for AES:
+        // Size (bytes)   Content
+        // ------------   -------
+        // Variable       Salt value
+        // 2              Password verification value
+        // Variable       Encrypted file data
+        // 10             Authentication code
+        //
+        // Value in the "compressed size" fields of the local file header and the central directory entry
+        // is the total size of all the items listed above. In other words, it is the total size of the
+        // salt value, password verification value, encrypted data, and authentication code.
+        		
+		/// <summary>
+		/// Initializes encryption keys based on given password.
+		/// </summary>
+		protected byte[] InitializeAESPassword(ZipEntry entry, string rawPassword)
+		{
+			var salt = new byte[entry.AESSaltLen];
+			// Salt needs to be cryptographically random, and unique per file
+			if (_aesRnd == null)
+				_aesRnd = RandomNumberGenerator.Create();
+			_aesRnd.GetBytes(salt);
+			int blockSize = entry.AESKeySize / 8;   // bits to bytes
+
+			cryptoTransform_ = new ZipAESTransform(rawPassword, salt, blockSize, true);
+
+			var headBytes = new byte[salt.Length + 2];
+
+			Array.Copy(salt, headBytes, salt.Length);
+			Array.Copy(((ZipAESTransform)cryptoTransform_).PwdVerifier, 0,
+				headBytes, headBytes.Length - 2, 2);
+
+			return headBytes;
+		}
+		
+		private byte[] CreateZipCryptoHeader(long crcValue)
 		{
 			offset += ZipConstants.CryptoHeaderSize;
 
-			InitializePassword(Password);
+			InitializeZipCryptoPassword(Password);
 
 			byte[] cryptBuffer = new byte[ZipConstants.CryptoHeaderSize];
-			var rnd = new Random();
-			rnd.NextBytes(cryptBuffer);
+			using (var rng = RandomNumberGenerator.Create())
+			{
+				rng.GetBytes(cryptBuffer);
+			}
+
 			cryptBuffer[11] = (byte)(crcValue >> 24);
 
 			EncryptBlock(cryptBuffer, 0, cryptBuffer.Length);
-			baseOutputStream_.Write(cryptBuffer, 0, cryptBuffer.Length);
-		}
 
-		private static void AddExtraDataAES(ZipEntry entry, ZipExtraData extraData)
+			return cryptBuffer;
+		}
+		
+		/// <summary>
+		/// Initializes encryption keys based on given <paramref name="password"/>.
+		/// </summary>
+		/// <param name="password">The password.</param>
+		private void InitializeZipCryptoPassword(string password)
 		{
-			// Vendor Version: AE-1 IS 1. AE-2 is 2. With AE-2 no CRC is required and 0 is stored.
-			const int VENDOR_VERSION = 2;
-			// Vendor ID is the two ASCII characters "AE".
-			const int VENDOR_ID = 0x4541; //not 6965;
-			extraData.StartNewEntry();
-			// Pack AES extra data field see http://www.winzip.com/aes_info.htm
-			//extraData.AddLeShort(7);							// Data size (currently 7)
-			extraData.AddLeShort(VENDOR_VERSION);               // 2 = AE-2
-			extraData.AddLeShort(VENDOR_ID);                    // "AE"
-			extraData.AddData(entry.AESEncryptionStrength);     //  1 = 128, 2 = 192, 3 = 256
-			extraData.AddLeShort((int)entry.CompressionMethod); // The actual compression method used to compress the file
-			extraData.AddNewEntry(0x9901);
+			var pkManaged = new PkzipClassicManaged();
+			byte[] key = PkzipClassic.GenerateKeys(ZipCryptoEncoding.GetBytes(password));
+			cryptoTransform_ = pkManaged.CreateEncryptor(key, null);
 		}
-
-		// Replaces WriteEncryptionHeader for AES
-		//
-		private void WriteAESHeader(ZipEntry entry)
-		{
-			byte[] salt;
-			byte[] pwdVerifier;
-			InitializeAESPassword(entry, Password, out salt, out pwdVerifier);
-			// File format for AES:
-			// Size (bytes)   Content
-			// ------------   -------
-			// Variable       Salt value
-			// 2              Password verification value
-			// Variable       Encrypted file data
-			// 10             Authentication code
-			//
-			// Value in the "compressed size" fields of the local file header and the central directory entry
-			// is the total size of all the items listed above. In other words, it is the total size of the
-			// salt value, password verification value, encrypted data, and authentication code.
-			baseOutputStream_.Write(salt, 0, salt.Length);
-			baseOutputStream_.Write(pwdVerifier, 0, pwdVerifier.Length);
-		}
-
+		
 		/// <summary>
 		/// Writes the given buffer to the current entry.
 		/// </summary>
@@ -654,6 +780,13 @@ namespace ICSharpCode.SharpZipLib.Zip
 		/// <exception cref="ZipException">Archive size is invalid</exception>
 		/// <exception cref="System.InvalidOperationException">No entry is active.</exception>
 		public override void Write(byte[] buffer, int offset, int count)
+			=> WriteSyncOrAsync(buffer, offset, count, null).GetAwaiter().GetResult();
+
+		/// <inheritdoc />
+		public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct)
+			=> await WriteSyncOrAsync(buffer, offset, count, ct).ConfigureAwait(false);
+
+		private async Task WriteSyncOrAsync(byte[] buffer, int offset, int count, CancellationToken? ct)
 		{
 			if (curEntry == null)
 			{
@@ -680,35 +813,52 @@ namespace ICSharpCode.SharpZipLib.Zip
 				throw new ArgumentException("Invalid offset/count combination");
 			}
 
-			crc.Update(new ArraySegment<byte>(buffer, offset, count));
+			if (curEntry.AESKeySize == 0 && !entryIsPassthrough)
+			{
+				// Only update CRC if AES is not enabled and entry is not a passthrough one
+				crc.Update(new ArraySegment<byte>(buffer, offset, count));
+			}
+
 			size += count;
 
-			switch (curMethod)
+			if (curMethod == CompressionMethod.Stored || entryIsPassthrough)
 			{
-				case CompressionMethod.Deflated:
-					base.Write(buffer, offset, count);
-					break;
-
-				case CompressionMethod.Stored:
-					if (Password != null)
+				if (Password != null)
+				{
+					CopyAndEncrypt(buffer, offset, count);
+				}
+				else
+				{
+					if (ct.HasValue)
 					{
-						CopyAndEncrypt(buffer, offset, count);
+						await baseOutputStream_.WriteAsync(buffer, offset, count, ct.Value).ConfigureAwait(false);
 					}
 					else
 					{
 						baseOutputStream_.Write(buffer, offset, count);
 					}
-					break;
+				}
+			}
+			else
+			{
+				if (ct.HasValue)
+				{
+					await base.WriteAsync(buffer, offset, count, ct.Value).ConfigureAwait(false);
+				}
+				else
+				{
+					base.Write(buffer, offset, count);
+				}
 			}
 		}
 
 		private void CopyAndEncrypt(byte[] buffer, int offset, int count)
 		{
-			const int CopyBufferSize = 4096;
-			byte[] localBuffer = new byte[CopyBufferSize];
+			const int copyBufferSize = 4096;
+			byte[] localBuffer = new byte[copyBufferSize];
 			while (count > 0)
 			{
-				int bufferCount = (count < CopyBufferSize) ? count : CopyBufferSize;
+				int bufferCount = (count < copyBufferSize) ? count : copyBufferSize;
 
 				Array.Copy(buffer, offset, localBuffer, 0, bufferCount);
 				EncryptBlock(localBuffer, 0, bufferCount);
@@ -747,144 +897,64 @@ namespace ICSharpCode.SharpZipLib.Zip
 			long numEntries = entries.Count;
 			long sizeEntries = 0;
 
-			foreach (ZipEntry entry in entries)
+			foreach (var entry in entries)
 			{
-				WriteLeInt(ZipConstants.CentralHeaderSignature);
-				WriteLeShort((entry.HostSystem << 8) | entry.VersionMadeBy);
-				WriteLeShort(entry.Version);
-				WriteLeShort(entry.Flags);
-				WriteLeShort((short)entry.CompressionMethodForHeader);
-				WriteLeInt((int)entry.DosTime);
-				WriteLeInt((int)entry.Crc);
-
-				if (entry.IsZip64Forced() ||
-					(entry.CompressedSize >= uint.MaxValue))
-				{
-					WriteLeInt(-1);
-				}
-				else
-				{
-					WriteLeInt((int)entry.CompressedSize);
-				}
-
-				if (entry.IsZip64Forced() ||
-					(entry.Size >= uint.MaxValue))
-				{
-					WriteLeInt(-1);
-				}
-				else
-				{
-					WriteLeInt((int)entry.Size);
-				}
-
-				byte[] name = ZipStrings.ConvertToArray(entry.Flags, entry.Name);
-
-				if (name.Length > 0xffff)
-				{
-					throw new ZipException("Name too long.");
-				}
-
-				var ed = new ZipExtraData(entry.ExtraData);
-
-				if (entry.CentralHeaderRequiresZip64)
-				{
-					ed.StartNewEntry();
-					if (entry.IsZip64Forced() ||
-						(entry.Size >= 0xffffffff))
-					{
-						ed.AddLeLong(entry.Size);
-					}
-
-					if (entry.IsZip64Forced() ||
-						(entry.CompressedSize >= 0xffffffff))
-					{
-						ed.AddLeLong(entry.CompressedSize);
-					}
-
-					if (entry.Offset >= 0xffffffff)
-					{
-						ed.AddLeLong(entry.Offset);
-					}
-
-					ed.AddNewEntry(1);
-				}
-				else
-				{
-					ed.Delete(1);
-				}
-
-				if (entry.AESKeySize > 0)
-				{
-					AddExtraDataAES(entry, ed);
-				}
-				byte[] extra = ed.GetEntryData();
-
-				byte[] entryComment =
-					(entry.Comment != null) ?
-					ZipStrings.ConvertToArray(entry.Flags, entry.Comment) :
-					new byte[0];
-
-				if (entryComment.Length > 0xffff)
-				{
-					throw new ZipException("Comment too long.");
-				}
-
-				WriteLeShort(name.Length);
-				WriteLeShort(extra.Length);
-				WriteLeShort(entryComment.Length);
-				WriteLeShort(0);    // disk number
-				WriteLeShort(0);    // internal file attributes
-									// external file attributes
-
-				if (entry.ExternalFileAttributes != -1)
-				{
-					WriteLeInt(entry.ExternalFileAttributes);
-				}
-				else
-				{
-					if (entry.IsDirectory)
-					{                         // mark entry as directory (from nikolam.AT.perfectinfo.com)
-						WriteLeInt(16);
-					}
-					else
-					{
-						WriteLeInt(0);
-					}
-				}
-
-				if (entry.Offset >= uint.MaxValue)
-				{
-					WriteLeInt(-1);
-				}
-				else
-				{
-					WriteLeInt((int)entry.Offset);
-				}
-
-				if (name.Length > 0)
-				{
-					baseOutputStream_.Write(name, 0, name.Length);
-				}
-
-				if (extra.Length > 0)
-				{
-					baseOutputStream_.Write(extra, 0, extra.Length);
-				}
-
-				if (entryComment.Length > 0)
-				{
-					baseOutputStream_.Write(entryComment, 0, entryComment.Length);
-				}
-
-				sizeEntries += ZipConstants.CentralHeaderBaseSize + name.Length + extra.Length + entryComment.Length;
+				sizeEntries += ZipFormat.WriteEndEntry(baseOutputStream_, entry, _stringCodec);
 			}
 
-			using (ZipHelperStream zhs = new ZipHelperStream(baseOutputStream_))
-			{
-				zhs.WriteEndOfCentralDirectory(numEntries, sizeEntries, offset, zipComment);
-			}
+			ZipFormat.WriteEndOfCentralDirectory(baseOutputStream_, numEntries, sizeEntries, offset, zipComment);
 
 			entries = null;
+		}
+
+		/// <inheritdoc cref="Finish"/>>
+		public override async Task FinishAsync(CancellationToken ct)
+		{
+			using (var ms = new MemoryStream())
+			{
+				if (entries == null)
+				{
+					return;
+				}
+
+				if (curEntry != null)
+				{
+					await CloseEntryAsync(ct).ConfigureAwait(false);
+				}
+
+				long numEntries = entries.Count;
+				long sizeEntries = 0;
+
+				foreach (var entry in entries)
+				{
+					await baseOutputStream_.WriteProcToStreamAsync(ms, s =>
+					{
+						sizeEntries += ZipFormat.WriteEndEntry(s, entry, _stringCodec);
+					}, ct).ConfigureAwait(false);
+				}
+
+				await baseOutputStream_.WriteProcToStreamAsync(ms, s 
+						=> ZipFormat.WriteEndOfCentralDirectory(s, numEntries, sizeEntries, offset, zipComment),
+					ct).ConfigureAwait(false);
+
+				entries = null;
+			}
+		}
+
+		/// <summary>
+		/// Flushes the stream by calling <see cref="DeflaterOutputStream.Flush">Flush</see> on the deflater stream unless
+		/// the current compression method is <see cref="CompressionMethod.Stored"/>. Then it flushes the underlying output stream.
+		/// </summary>
+		public override void Flush()
+		{
+			if(curMethod == CompressionMethod.Stored)
+			{
+				baseOutputStream_.Flush();
+			} 
+			else
+			{
+				base.Flush();
+			}
 		}
 
 		#region Instance Fields
@@ -904,6 +974,8 @@ namespace ICSharpCode.SharpZipLib.Zip
 		/// </summary>
 		private ZipEntry curEntry;
 
+		private bool entryIsPassthrough;
+
 		private int defaultCompressionLevel = Deflater.DEFAULT_COMPRESSION;
 
 		private CompressionMethod curMethod = CompressionMethod.Deflated;
@@ -921,7 +993,7 @@ namespace ICSharpCode.SharpZipLib.Zip
 		/// <summary>
 		/// Comment for the entire archive recorded in central header.
 		/// </summary>
-		private byte[] zipComment = new byte[0];
+		private byte[] zipComment = Empty.Array<byte>();
 
 		/// <summary>
 		/// Flag indicating that header patching is required for the current entry.
@@ -929,14 +1001,9 @@ namespace ICSharpCode.SharpZipLib.Zip
 		private bool patchEntryHeader;
 
 		/// <summary>
-		/// Position to patch crc
+		/// The values to patch in the entry local header
 		/// </summary>
-		private long crcPatchPos = -1;
-
-		/// <summary>
-		/// Position to patch size.
-		/// </summary>
-		private long sizePatchPos = -1;
+		private EntryPatchData patchData;
 
 		// Default is dynamic which is not backwards compatible and can cause problems
 		// with XP's built in compression which cant read Zip64 archives.
@@ -944,6 +1011,18 @@ namespace ICSharpCode.SharpZipLib.Zip
 		// NOTE: Setting the size for entries before they are added is the best solution!
 		private UseZip64 useZip64_ = UseZip64.Dynamic;
 
+		/// <summary>
+		/// The password to use when encrypting archive entries.
+		/// </summary>
+		private string password;
+
 		#endregion Instance Fields
+
+		#region Static Fields
+
+		// Static to help ensure that multiple files within a zip will get different random salt
+		private static RandomNumberGenerator _aesRnd = RandomNumberGenerator.Create();
+
+		#endregion Static Fields
 	}
 }

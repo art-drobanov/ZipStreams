@@ -1,6 +1,7 @@
 using ICSharpCode.SharpZipLib.Core;
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace ICSharpCode.SharpZipLib.Zip
@@ -81,7 +82,7 @@ namespace ICSharpCode.SharpZipLib.Zip
 		}
 
 		/// <summary>
-		/// Gets or sets a value indicating wether paths on incoming values should be removed.
+		/// Gets or sets a value indicating whether paths on incoming values should be removed.
 		/// </summary>
 		public bool TrimIncomingPaths
 		{
@@ -133,7 +134,14 @@ namespace ICSharpCode.SharpZipLib.Zip
 				{
 					name = Path.Combine(_baseDirectory, name);
 
-					if (!_allowParentTraversal && !Path.GetFullPath(name).StartsWith(_baseDirectory, StringComparison.InvariantCultureIgnoreCase))
+					// Ensure base directory ends with directory separator ('/' or '\' depending on OS)
+					var pathBase = Path.GetFullPath(_baseDirectory);
+					if (pathBase[pathBase.Length - 1] != Path.DirectorySeparatorChar)
+					{
+						pathBase += Path.DirectorySeparatorChar;
+					}
+
+					if (!_allowParentTraversal && !Path.GetFullPath(name).StartsWith(pathBase, StringComparison.InvariantCultureIgnoreCase))
 					{
 						throw new InvalidNameException("Parent traversal in paths is not allowed");
 					}
@@ -176,7 +184,7 @@ namespace ICSharpCode.SharpZipLib.Zip
 				throw new ArgumentNullException(nameof(name));
 			}
 
-			name = WindowsPathUtils.DropPathRoot(name.Replace("/", Path.DirectorySeparatorChar.ToString()));
+			name = PathUtils.DropPathRoot(name.Replace("/", Path.DirectorySeparatorChar.ToString()));
 
 			// Drop any leading slashes.
 			while ((name.Length > 0) && (name[0] == Path.DirectorySeparatorChar))

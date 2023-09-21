@@ -16,3 +16,6 @@
 	@rmdir /Q /S %%i
 )
 
+@for /D %%i in (*Release) do @(
+	@rmdir /Q /S %%i
+)

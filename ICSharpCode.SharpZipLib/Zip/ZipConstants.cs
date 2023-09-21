@@ -161,7 +161,7 @@ namespace ICSharpCode.SharpZipLib.Zip
 		Method = 0x0006,
 
 		/// <summary>
-		/// Bit 3 if set indicates a trailing data desciptor is appended to the entry data
+		/// Bit 3 if set indicates a trailing data descriptor is appended to the entry data
 		/// </summary>
 		Descriptor = 0x0008,
 
@@ -231,12 +231,28 @@ namespace ICSharpCode.SharpZipLib.Zip
 		/// </summary>
 		ReservedPkware15 = 0x8000
 	}
+	
+	/// <summary>
+	/// Helpers for <see cref="GeneralBitFlags"/>
+	/// </summary>
+	public static class GeneralBitFlagsExtensions
+	{
+		/// <summary>
+		/// This is equivalent of <see cref="Enum.HasFlag"/> in .NET Core, but since the .NET FW
+		/// version is really slow (due to un-/boxing and reflection)  we use this wrapper.
+		/// </summary>
+		/// <param name="flagData"></param>
+		/// <param name="flag"></param>
+		/// <returns></returns>
+		public static bool Includes(this GeneralBitFlags flagData, GeneralBitFlags flag) => (flag & flagData) != 0;
+	}
 
 	#endregion Enumerations
 
 	/// <summary>
 	/// This class contains constants used for Zip format files
 	/// </summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "kept for backwards compatibility")]
 	public static class ZipConstants
 	{
 		#region Versions
@@ -280,6 +296,11 @@ namespace ICSharpCode.SharpZipLib.Zip
 		/// The version required for Zip64 extensions (4.5 or higher)
 		/// </summary>
 		public const int VersionZip64 = 45;
+
+		/// <summary>
+		/// The version required for BZip2 compression (4.6 or higher)
+		/// </summary>
+		public const int VersionBZip2 = 46;
 
 		#endregion Versions
 
@@ -344,6 +365,11 @@ namespace ICSharpCode.SharpZipLib.Zip
 		/// </summary>
 		[Obsolete("Use CryptoHeaderSize instead")]
 		public const int CRYPTO_HEADER_SIZE = 12;
+
+		/// <summary>
+		/// The size of the Zip64 central directory locator.
+		/// </summary>
+		public const int Zip64EndOfCentralDirectoryLocatorSize = 20;
 
 		#endregion Header Sizes
 
@@ -438,12 +464,12 @@ namespace ICSharpCode.SharpZipLib.Zip
 		public const int ArchiveExtraDataSignature = 'P' | ('K' << 8) | (6 << 16) | (7 << 24);
 
 		/// <summary>
-		/// Central header digitial signature
+		/// Central header digital signature
 		/// </summary>
 		public const int CentralHeaderDigitalSignature = 'P' | ('K' << 8) | (5 << 16) | (5 << 24);
 
 		/// <summary>
-		/// Central header digitial signature
+		/// Central header digital signature
 		/// </summary>
 		[Obsolete("Use CentralHeaderDigitalSignaure instead")]
 		public const int CENDIGITALSIG = 'P' | ('K' << 8) | (5 << 16) | (5 << 24);
@@ -460,48 +486,29 @@ namespace ICSharpCode.SharpZipLib.Zip
 		public const int ENDSIG = 'P' | ('K' << 8) | (5 << 16) | (6 << 24);
 
 		#endregion Header Signatures
+	}
+
+	/// <summary>
+	/// GeneralBitFlags helper extensions
+	/// </summary>
+	public static class GenericBitFlagsExtensions
+	{
+		/// <summary>
+		/// Efficiently check if any of the <see cref="GeneralBitFlags">flags</see> are set without enum un-/boxing
+		/// </summary>
+		/// <param name="target"></param>
+		/// <param name="flags"></param>
+		/// <returns>Returns whether any of flags are set</returns>
+		public static bool HasAny(this GeneralBitFlags target, GeneralBitFlags flags)
+			=> ((int)target & (int)flags) != 0;
 
 		/// <summary>
-		/// Default encoding used for string conversion.  0 gives the default system OEM code page.
-		/// Using the default code page isnt the full solution neccessarily
-		/// there are many variable factors, codepage 850 is often a good choice for
-		/// European users, however be careful about compatability.
+		/// Efficiently check if all the <see cref="GeneralBitFlags">flags</see> are set without enum un-/boxing
 		/// </summary>
-		[Obsolete("Use ZipStrings instead")]
-		public static int DefaultCodePage
-		{
-			get => ZipStrings.CodePage;
-			set => ZipStrings.CodePage = value;
-		}
-
-		/// <summary> Depracated wrapper for <see cref="ZipStrings.ConvertToString(byte[], int)"/></summary>
-		[Obsolete("Use ZipStrings.ConvertToString instead")]
-		public static string ConvertToString(byte[] data, int count)
-			=> ZipStrings.ConvertToString(data, count);
-
-		/// <summary> Depracated wrapper for <see cref="ZipStrings.ConvertToString(byte[])"/></summary>
-		[Obsolete("Use ZipStrings.ConvertToString instead")]
-		public static string ConvertToString(byte[] data)
-			=> ZipStrings.ConvertToString(data);
-
-		/// <summary> Depracated wrapper for <see cref="ZipStrings.ConvertToStringExt(int, byte[], int)"/></summary>
-		[Obsolete("Use ZipStrings.ConvertToStringExt instead")]
-		public static string ConvertToStringExt(int flags, byte[] data, int count)
-			=> ZipStrings.ConvertToStringExt(flags, data, count);
-
-		/// <summary> Depracated wrapper for <see cref="ZipStrings.ConvertToStringExt(int, byte[])"/></summary>
-		[Obsolete("Use ZipStrings.ConvertToStringExt instead")]
-		public static string ConvertToStringExt(int flags, byte[] data)
-			=> ZipStrings.ConvertToStringExt(flags, data);
-
-		/// <summary> Depracated wrapper for <see cref="ZipStrings.ConvertToArray(string)"/></summary>
-		[Obsolete("Use ZipStrings.ConvertToArray instead")]
-		public static byte[] ConvertToArray(string str)
-			=> ZipStrings.ConvertToArray(str);
-
-		/// <summary> Depracated wrapper for <see cref="ZipStrings.ConvertToArray(int, string)"/></summary>
-		[Obsolete("Use ZipStrings.ConvertToArray instead")]
-		public static byte[] ConvertToArray(int flags, string str)
-			=> ZipStrings.ConvertToArray(flags, str);
+		/// <param name="target"></param>
+		/// <param name="flags"></param>
+		/// <returns>Returns whether the flags are all set</returns>
+		public static bool HasAll(this GeneralBitFlags target, GeneralBitFlags flags)
+			=> ((int)target & (int)flags) == (int)flags;
 	}
 }

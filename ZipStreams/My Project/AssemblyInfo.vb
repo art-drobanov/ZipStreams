@@ -12,7 +12,7 @@ Imports System.Runtime.InteropServices
 <Assembly: AssemblyDescription("ZipStreams")>
 <Assembly: AssemblyCompany("Artem Drobanov (DrAF)")>
 <Assembly: AssemblyProduct("ZipStreams")>
-<Assembly: AssemblyCopyright("Copyright © DrAF 2017-2019")>
+<Assembly: AssemblyCopyright("Copyright © DrAF 2017-2023")>
 <Assembly: AssemblyTrademark("ZipStreams")>
 
 <Assembly: ComVisible(False)>
@@ -31,5 +31,7 @@ Imports System.Runtime.InteropServices
 ' by using the '*' as shown below:
 ' <Assembly: AssemblyVersion("1.0.*")> 
 
-<Assembly: AssemblyVersion("1.2.0.7")>
-<Assembly: AssemblyFileVersion("1.2.0.7")>
+<Assembly: AssemblyVersion("1.0.0.0")> 
+<Assembly: AssemblyFileVersion("1.0.0.0")> 
+<Assembly: AssemblyInformationalVersion("{c:ymd.} {c:hms:} {chash:6}")>
+

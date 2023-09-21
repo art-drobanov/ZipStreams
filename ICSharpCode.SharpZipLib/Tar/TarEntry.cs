@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Text;
+using ICSharpCode.SharpZipLib.Core;
 
 namespace ICSharpCode.SharpZipLib.Tar
 {
@@ -49,10 +51,25 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <param name = "headerBuffer">
 		/// The header bytes from a tar archive entry.
 		/// </param>
-		public TarEntry(byte[] headerBuffer)
+		[Obsolete("No Encoding for Name field is specified, any non-ASCII bytes will be discarded")]
+		public TarEntry(byte[] headerBuffer) : this(headerBuffer, null)
+		{
+		}
+
+		/// <summary>
+		/// Construct an entry from an archive's header bytes. File is set
+		/// to null.
+		/// </summary>
+		/// <param name = "headerBuffer">
+		/// The header bytes from a tar archive entry.
+		/// </param>
+		/// <param name = "nameEncoding">
+		/// The <see cref="Encoding"/> used for the Name fields, or null for ASCII only
+		/// </param>
+		public TarEntry(byte[] headerBuffer, Encoding nameEncoding)
 		{
 			header = new TarHeader();
-			header.ParseBuffer(headerBuffer);
+			header.ParseBuffer(headerBuffer, nameEncoding);
 		}
 
 		/// <summary>
@@ -97,7 +114,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 		public static TarEntry CreateTarEntry(string name)
 		{
 			var entry = new TarEntry();
-			TarEntry.NameTarHeader(entry.header, name);
+
+			entry.NameTarHeader(name);
 			return entry;
 		}
 
@@ -171,10 +189,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </returns>
 		public TarHeader TarHeader
 		{
-			get
-			{
-				return header;
-			}
+			get { return header; }
 		}
 
 		/// <summary>
@@ -182,14 +197,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public string Name
 		{
-			get
-			{
-				return header.Name;
-			}
-			set
-			{
-				header.Name = value;
-			}
+			get { return header.Name; }
+			set { header.Name = value; }
 		}
 
 		/// <summary>
@@ -197,14 +206,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public int UserId
 		{
-			get
-			{
-				return header.UserId;
-			}
-			set
-			{
-				header.UserId = value;
-			}
+			get { return header.UserId; }
+			set { header.UserId = value; }
 		}
 
 		/// <summary>
@@ -212,14 +215,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public int GroupId
 		{
-			get
-			{
-				return header.GroupId;
-			}
-			set
-			{
-				header.GroupId = value;
-			}
+			get { return header.GroupId; }
+			set { header.GroupId = value; }
 		}
 
 		/// <summary>
@@ -227,14 +224,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public string UserName
 		{
-			get
-			{
-				return header.UserName;
-			}
-			set
-			{
-				header.UserName = value;
-			}
+			get { return header.UserName; }
+			set { header.UserName = value; }
 		}
 
 		/// <summary>
@@ -242,14 +233,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public string GroupName
 		{
-			get
-			{
-				return header.GroupName;
-			}
-			set
-			{
-				header.GroupName = value;
-			}
+			get { return header.GroupName; }
+			set { header.GroupName = value; }
 		}
 
 		/// <summary>
@@ -287,14 +272,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public DateTime ModTime
 		{
-			get
-			{
-				return header.ModTime;
-			}
-			set
-			{
-				header.ModTime = value;
-			}
+			get { return header.ModTime; }
+			set { header.ModTime = value; }
 		}
 
 		/// <summary>
@@ -305,10 +284,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </returns>
 		public string File
 		{
-			get
-			{
-				return file;
-			}
+			get { return file; }
 		}
 
 		/// <summary>
@@ -316,14 +292,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// </summary>
 		public long Size
 		{
-			get
-			{
-				return header.Size;
-			}
-			set
-			{
-				header.Size = value;
-			}
+			get { return header.Size; }
+			set { header.Size = value; }
 		}
 
 		/// <summary>
@@ -402,15 +372,10 @@ namespace ICSharpCode.SharpZipLib.Tar
 						}
 			*/
 
-			name = name.Replace(Path.DirectorySeparatorChar, '/');
-
 			// No absolute pathnames
 			// Windows (and Posix?) paths can start with UNC style "\\NetworkDrive\",
 			// so we loop on starting /'s.
-			while (name.StartsWith("/", StringComparison.Ordinal))
-			{
-				name = name.Substring(1);
-			}
+			name = name.ToTarArchivePath();
 
 			header.LinkName = String.Empty;
 			header.Name = name;
@@ -433,7 +398,8 @@ namespace ICSharpCode.SharpZipLib.Tar
 				header.Size = new FileInfo(file.Replace('/', Path.DirectorySeparatorChar)).Length;
 			}
 
-			header.ModTime = System.IO.File.GetLastWriteTime(file.Replace('/', Path.DirectorySeparatorChar)).ToUniversalTime();
+			header.ModTime = System.IO.File.GetLastWriteTime(file.Replace('/', Path.DirectorySeparatorChar))
+				.ToUniversalTime();
 			header.DevMajor = 0;
 			header.DevMinor = 0;
 		}
@@ -449,7 +415,7 @@ namespace ICSharpCode.SharpZipLib.Tar
 		{
 			if ((file == null) || !Directory.Exists(file))
 			{
-				return new TarEntry[0];
+				return Empty.Array<TarEntry>();
 			}
 
 			string[] list = Directory.GetFileSystemEntries(file);
@@ -469,9 +435,24 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <param name = "outBuffer">
 		/// The tar entry header buffer to fill in.
 		/// </param>
+		[Obsolete("No Encoding for Name field is specified, any non-ASCII bytes will be discarded")]
 		public void WriteEntryHeader(byte[] outBuffer)
 		{
-			header.WriteHeader(outBuffer);
+			WriteEntryHeader(outBuffer, null);
+		}
+
+		/// <summary>
+		/// Write an entry's header information to a header buffer.
+		/// </summary>
+		/// <param name = "outBuffer">
+		/// The tar entry header buffer to fill in.
+		/// </param>
+		/// <param name = "nameEncoding">
+		/// The <see cref="Encoding"/> used for the Name fields, or null for ASCII only
+		/// </param>
+		public void WriteEntryHeader(byte[] outBuffer, Encoding nameEncoding)
+		{
+			header.WriteHeader(outBuffer, nameEncoding);
 		}
 
 		/// <summary>
@@ -484,27 +465,38 @@ namespace ICSharpCode.SharpZipLib.Tar
 		/// <param name="newName">
 		/// The new name to place into the header buffer.
 		/// </param>
+		[Obsolete("No Encoding for Name field is specified, any non-ASCII bytes will be discarded")]
 		static public void AdjustEntryName(byte[] buffer, string newName)
 		{
-			TarHeader.GetNameBytes(newName, buffer, 0, TarHeader.NAMELEN);
+			AdjustEntryName(buffer, newName, null);
+		}
+
+		/// <summary>
+		/// Convenience method that will modify an entry's name directly
+		/// in place in an entry header buffer byte array.
+		/// </summary>
+		/// <param name="buffer">
+		/// The buffer containing the entry header to modify.
+		/// </param>
+		/// <param name="newName">
+		/// The new name to place into the header buffer.
+		/// </param>
+		/// <param name="nameEncoding">
+		/// The <see cref="Encoding"/> used for the Name fields, or null for ASCII only
+		/// </param>
+		static public void AdjustEntryName(byte[] buffer, string newName, Encoding nameEncoding)
+		{
+			TarHeader.GetNameBytes(newName, buffer, 0, TarHeader.NAMELEN, nameEncoding);
 		}
 
 		/// <summary>
 		/// Fill in a TarHeader given only the entry's name.
 		/// </summary>
-		/// <param name="header">
-		/// The TarHeader to fill in.
-		/// </param>
 		/// <param name="name">
 		/// The tar entry name.
 		/// </param>
-		static public void NameTarHeader(TarHeader header, string name)
+		public void NameTarHeader(string name)
 		{
-			if (header == null)
-			{
-				throw new ArgumentNullException(nameof(header));
-			}
-
 			if (name == null)
 			{
 				throw new ArgumentNullException(nameof(name));
